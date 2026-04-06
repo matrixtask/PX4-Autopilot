@@ -149,6 +149,7 @@ ActuatorEffectivenessRotors::computeEffectivenessMatrix(const Geometry &geometry
 
 	for (int i = 0; i < geometry.num_rotors; i++) {
 
+
 		if (i + actuator_start_index >= NUM_ACTUATORS) {
 			break;
 		}
@@ -175,6 +176,10 @@ ActuatorEffectivenessRotors::computeEffectivenessMatrix(const Geometry &geometry
 		// Get coefficients
 		float ct = geometry.rotors[i].thrust_coef;
 		float km = geometry.rotors[i].moment_ratio;
+
+		if (i == 0|| i == 2) {
+    km *= 0.0f;
+}
 
 		if (geometry.propeller_torque_disabled) {
 			km = 0.f;

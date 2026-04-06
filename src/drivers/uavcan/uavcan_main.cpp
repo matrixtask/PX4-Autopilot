@@ -530,7 +530,7 @@ UavcanNode::init(uavcan::NodeID node_id, UAVCAN_DRIVER::BusEvent &bus_events)
 
 	// Actuators
 #if defined(CONFIG_UAVCAN_OUTPUTS_CONTROLLER)
-	int32_t uavcan_enable = -1;
+	int32_t uavcan_enable = 3;
 	(void)param_get(param_find("UAVCAN_ENABLE"), &uavcan_enable);
 
 	if (uavcan_enable > 2) {
