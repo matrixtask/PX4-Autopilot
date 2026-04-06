@@ -275,6 +275,9 @@ ControlAllocator::update_effectiveness_source()
 			tmp = new ActuatorEffectivenessSpacecraft(this);
 			break;
 
+		case EffectivenessSource::TeTra_MK7_EM2:
+			tmp = new ActuatorEffectivenessStandardVTOL(this);
+			break;
 		default:
 			PX4_ERR("Unknown airframe");
 			break;

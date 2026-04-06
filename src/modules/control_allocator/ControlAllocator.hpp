@@ -172,6 +172,7 @@ private:
 		HELICOPTER_COAXIAL = 12,
 		SPACECRAFT_2D = 13,
 		SPACECRAFT_3D = 14,
+		TeTra_MK7_EM2 = 22001,
 	};
 
 	enum class FailureMode {

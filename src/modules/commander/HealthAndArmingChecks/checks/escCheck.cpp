@@ -30,10 +30,10 @@
  * POSSIBILITY OF SUCH DAMAGE.
  *
  ****************************************************************************/
-
 #include "escCheck.hpp"
 #include <px4_platform_common/events.h>
 #include <uORB/topics/actuator_motors.h>
+#include <uORB/topics/esc_status.h>   // ← 追加
 
 using namespace time_literals;
 
@@ -318,7 +318,10 @@ void EscChecks::updateEscsStatus(const Context &context, Report &reporter, const
 {
 	if (context.status().arming_state == vehicle_status_s::ARMING_STATE_ARMED) {
 		const int limited_esc_count = math::min(esc_status.esc_count, esc_status_s::CONNECTED_ESC_MAX);
-		const int all_escs_armed_mask = (1 << limited_esc_count) - 1;
+		uint16_t all_escs_armed_mask =
+			(limited_esc_count >= 16)
+			        ? 0xFFFFu
+				: ((1u << limited_esc_count) - 1u);
 		const bool is_all_escs_armed = (all_escs_armed_mask == esc_status.esc_armed_flags);
 
 		_esc_arm_hysteresis.set_hysteresis_time_from(false, ESC_TIMEOUT_US);
