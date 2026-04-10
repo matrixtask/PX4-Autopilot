@@ -177,9 +177,6 @@ ActuatorEffectivenessRotors::computeEffectivenessMatrix(const Geometry &geometry
 		float ct = geometry.rotors[i].thrust_coef;
 		float km = geometry.rotors[i].moment_ratio;
 
-		if (i == 0|| i == 2) {
-    km *= 0.0f;
-}
 
 		if (geometry.propeller_torque_disabled) {
 			km = 0.f;

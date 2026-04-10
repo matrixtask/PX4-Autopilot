@@ -476,6 +476,7 @@ ControlAllocator::update_effectiveness_matrix_if_needed(EffectivenessUpdateReaso
 {
 	ActuatorEffectiveness::Configuration config{};
 
+
 	if (reason == EffectivenessUpdateReason::NO_EXTERNAL_UPDATE
 	    && hrt_elapsed_time(&_last_effectiveness_update) < 100_ms) { // rate-limit updates
 		return;

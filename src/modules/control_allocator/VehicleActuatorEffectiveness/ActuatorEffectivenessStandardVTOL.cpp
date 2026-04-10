@@ -50,7 +50,7 @@ ActuatorEffectivenessStandardVTOL::getEffectivenessMatrix(Configuration &configu
 
 	// Motors
 	configuration.selected_matrix = 0;
-	_rotors.enablePropellerTorqueNonUpwards(false);
+	_rotors.enablePropellerTorqueNonUpwards(true);
 	const bool mc_rotors_added_successfully = _rotors.addActuators(configuration);
 	_upwards_motors_mask = _rotors.getUpwardsMotors();
 	_forwards_motors_mask = _rotors.getForwardsMotors();
