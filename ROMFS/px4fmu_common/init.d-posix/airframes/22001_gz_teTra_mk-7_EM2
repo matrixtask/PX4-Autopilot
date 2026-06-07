@@ -2,7 +2,7 @@
 #
 # @name Gazebo teTra_mk-7_EM2
 #
-# @type Quadrotor
+# @type Standard VTOL
 #
 
 . ${R}etc/init.d/rc.vtol_defaults

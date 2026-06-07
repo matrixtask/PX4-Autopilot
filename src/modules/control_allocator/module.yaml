@@ -33,7 +33,8 @@ parameters:
                 13: Rover (Mecanum)
                 14: Spacecraft 2D
                 15: Spacecraft 3D
-            default: 2
+                22001: teTra MK7 EM2
+            default: 0
 
         CA_METHOD:
             description:
@@ -261,7 +262,7 @@ parameters:
                 6: '6'
                 7: '7'
                 8: '8'
-            default: 5
+            default: 0
         CA_SV_CS${i}_TYPE:
             description:
                 short: Control Surface ${i} type
