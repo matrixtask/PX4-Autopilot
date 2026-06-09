@@ -136,7 +136,7 @@ param set-default CA_ROTOR11_AZ -0.99
 param set-default CA_ROTOR12_PX -1.80
 param set-default CA_ROTOR12_PY  0.00
 param set-default CA_ROTOR12_PZ -0.45
-param set-default CA_ROTOR12_KM  0.05
+param set-default CA_ROTOR12_KM  0.16613
 param set-default CA_ROTOR12_AX -1.0
 param set-default CA_ROTOR12_AY  0.0
 param set-default CA_ROTOR12_AZ  0.0
@@ -161,7 +161,7 @@ param set-default SIM_GZ_EC_FUNC12  112
 param set-default SIM_GZ_EC_FUNC13  113
 
 # ESC speed command limits. Lift rotor 0-11 max follows H4T130 2380 RPM = 249.23 rad/s.
-# Rotor 12 is the cruise propeller and keeps its separate placeholder limits.
+# Rotor 12 max follows a 1.8 m Rotax-class pusher prop at 2386.8 RPM = 249.95 rad/s.
 param set-default SIM_GZ_EC_MIN1    37.38
 param set-default SIM_GZ_EC_MIN2    37.38
 param set-default SIM_GZ_EC_MIN3    37.38
@@ -174,7 +174,7 @@ param set-default SIM_GZ_EC_MIN9    37.38
 param set-default SIM_GZ_EC_MIN10   37.38
 param set-default SIM_GZ_EC_MIN11   37.38
 param set-default SIM_GZ_EC_MIN12   37.38
-param set-default SIM_GZ_EC_MIN13   150
+param set-default SIM_GZ_EC_MIN13   0
 
 param set-default SIM_GZ_EC_MAX1    249.23
 param set-default SIM_GZ_EC_MAX2    249.23
@@ -188,7 +188,7 @@ param set-default SIM_GZ_EC_MAX9    249.23
 param set-default SIM_GZ_EC_MAX10   249.23
 param set-default SIM_GZ_EC_MAX11   249.23
 param set-default SIM_GZ_EC_MAX12   249.23
-param set-default SIM_GZ_EC_MAX13   1000
+param set-default SIM_GZ_EC_MAX13   249.95
 
 # ============================================
 # Vehicle Configuration
