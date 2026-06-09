@@ -34,7 +34,7 @@ param set-default CA_ROTOR_COUNT 13
 param set-default CA_ROTOR0_PX   4.03
 param set-default CA_ROTOR0_PY  -1.45
 param set-default CA_ROTOR0_PZ  -0.93
-param set-default CA_ROTOR0_KM  -0.05
+param set-default CA_ROTOR0_KM  -0.08784
 param set-default CA_ROTOR0_AX   0.0
 param set-default CA_ROTOR0_AY  -0.13
 param set-default CA_ROTOR0_AZ  -0.99
@@ -42,7 +42,7 @@ param set-default CA_ROTOR0_AZ  -0.99
 param set-default CA_ROTOR1_PX   1.95
 param set-default CA_ROTOR1_PY  -1.45
 param set-default CA_ROTOR1_PZ  -0.93
-param set-default CA_ROTOR1_KM   0.05
+param set-default CA_ROTOR1_KM   0.08784
 param set-default CA_ROTOR1_AX   0.0
 param set-default CA_ROTOR1_AY   0.13
 param set-default CA_ROTOR1_AZ  -0.99
@@ -50,7 +50,7 @@ param set-default CA_ROTOR1_AZ  -0.99
 param set-default CA_ROTOR2_PX   1.95
 param set-default CA_ROTOR2_PY  -4.00
 param set-default CA_ROTOR2_PZ  -0.93
-param set-default CA_ROTOR2_KM  -0.05
+param set-default CA_ROTOR2_KM  -0.08784
 param set-default CA_ROTOR2_AX   0.0
 param set-default CA_ROTOR2_AY  -0.13
 param set-default CA_ROTOR2_AZ  -0.99
@@ -59,7 +59,7 @@ param set-default CA_ROTOR2_AZ  -0.99
 param set-default CA_ROTOR3_PX  -1.95
 param set-default CA_ROTOR3_PY  -4.00
 param set-default CA_ROTOR3_PZ  -0.93
-param set-default CA_ROTOR3_KM  -0.05
+param set-default CA_ROTOR3_KM  -0.08784
 param set-default CA_ROTOR3_AX   0.0
 param set-default CA_ROTOR3_AY   0.13
 param set-default CA_ROTOR3_AZ  -0.99
@@ -67,7 +67,7 @@ param set-default CA_ROTOR3_AZ  -0.99
 param set-default CA_ROTOR4_PX  -1.95
 param set-default CA_ROTOR4_PY  -1.45
 param set-default CA_ROTOR4_PZ  -0.93
-param set-default CA_ROTOR4_KM   0.05
+param set-default CA_ROTOR4_KM   0.08784
 param set-default CA_ROTOR4_AX   0.0
 param set-default CA_ROTOR4_AY  -0.13
 param set-default CA_ROTOR4_AZ  -0.99
@@ -75,7 +75,7 @@ param set-default CA_ROTOR4_AZ  -0.99
 param set-default CA_ROTOR5_PX  -4.03
 param set-default CA_ROTOR5_PY  -1.45
 param set-default CA_ROTOR5_PZ  -0.93
-param set-default CA_ROTOR5_KM  -0.05
+param set-default CA_ROTOR5_KM  -0.08784
 param set-default CA_ROTOR5_AX   0.0
 param set-default CA_ROTOR5_AY   0.13
 param set-default CA_ROTOR5_AZ  -0.99
@@ -84,7 +84,7 @@ param set-default CA_ROTOR5_AZ  -0.99
 param set-default CA_ROTOR6_PX  -4.03
 param set-default CA_ROTOR6_PY   1.45
 param set-default CA_ROTOR6_PZ  -0.93
-param set-default CA_ROTOR6_KM   0.05
+param set-default CA_ROTOR6_KM   0.08784
 param set-default CA_ROTOR6_AX   0.0
 param set-default CA_ROTOR6_AY  -0.13
 param set-default CA_ROTOR6_AZ  -0.99
@@ -92,7 +92,7 @@ param set-default CA_ROTOR6_AZ  -0.99
 param set-default CA_ROTOR7_PX  -1.95
 param set-default CA_ROTOR7_PY   1.45
 param set-default CA_ROTOR7_PZ  -0.93
-param set-default CA_ROTOR7_KM  -0.05
+param set-default CA_ROTOR7_KM  -0.08784
 param set-default CA_ROTOR7_AX   0.0
 param set-default CA_ROTOR7_AY   0.13
 param set-default CA_ROTOR7_AZ  -0.99
@@ -100,7 +100,7 @@ param set-default CA_ROTOR7_AZ  -0.99
 param set-default CA_ROTOR8_PX  -1.95
 param set-default CA_ROTOR8_PY   4.00
 param set-default CA_ROTOR8_PZ  -0.93
-param set-default CA_ROTOR8_KM   0.05
+param set-default CA_ROTOR8_KM   0.08784
 param set-default CA_ROTOR8_AX   0.0
 param set-default CA_ROTOR8_AY  -0.13
 param set-default CA_ROTOR8_AZ  -0.99
@@ -108,7 +108,7 @@ param set-default CA_ROTOR8_AZ  -0.99
 param set-default CA_ROTOR9_PX   1.95
 param set-default CA_ROTOR9_PY   4.00
 param set-default CA_ROTOR9_PZ  -0.93
-param set-default CA_ROTOR9_KM   0.05
+param set-default CA_ROTOR9_KM   0.08784
 param set-default CA_ROTOR9_AX   0.0
 param set-default CA_ROTOR9_AY   0.13
 param set-default CA_ROTOR9_AZ  -0.99
@@ -116,7 +116,7 @@ param set-default CA_ROTOR9_AZ  -0.99
 param set-default CA_ROTOR10_PX  1.95
 param set-default CA_ROTOR10_PY  1.45
 param set-default CA_ROTOR10_PZ -0.93
-param set-default CA_ROTOR10_KM -0.05
+param set-default CA_ROTOR10_KM -0.08784
 param set-default CA_ROTOR10_AX  0.0
 param set-default CA_ROTOR10_AY -0.13
 param set-default CA_ROTOR10_AZ -0.99
@@ -124,7 +124,7 @@ param set-default CA_ROTOR10_AZ -0.99
 param set-default CA_ROTOR11_PX  4.03
 param set-default CA_ROTOR11_PY  1.45
 param set-default CA_ROTOR11_PZ -0.93
-param set-default CA_ROTOR11_KM  0.05
+param set-default CA_ROTOR11_KM  0.08784
 param set-default CA_ROTOR11_AX  0.0
 param set-default CA_ROTOR11_AY  0.13
 param set-default CA_ROTOR11_AZ -0.99
@@ -160,35 +160,34 @@ param set-default SIM_GZ_EC_FUNC11  111
 param set-default SIM_GZ_EC_FUNC12  112
 param set-default SIM_GZ_EC_FUNC13  113
 
-# ESC PWM min/max values
-# MIN: Minimum throttle value (1000 microseconds)
-# MAX: Maximum throttle value (2000 microseconds)
-param set-default SIM_GZ_EC_MIN1    150
-param set-default SIM_GZ_EC_MIN2    150
-param set-default SIM_GZ_EC_MIN3    150
-param set-default SIM_GZ_EC_MIN4    150
-param set-default SIM_GZ_EC_MIN5    150
-param set-default SIM_GZ_EC_MIN6    150
-param set-default SIM_GZ_EC_MIN7    150
-param set-default SIM_GZ_EC_MIN8    150
-param set-default SIM_GZ_EC_MIN9    150
-param set-default SIM_GZ_EC_MIN10   150
-param set-default SIM_GZ_EC_MIN11   150
-param set-default SIM_GZ_EC_MIN12   150
+# ESC speed command limits. Lift rotor 0-11 max follows H4T130 2380 RPM = 249.23 rad/s.
+# Rotor 12 is the cruise propeller and keeps its separate placeholder limits.
+param set-default SIM_GZ_EC_MIN1    37.38
+param set-default SIM_GZ_EC_MIN2    37.38
+param set-default SIM_GZ_EC_MIN3    37.38
+param set-default SIM_GZ_EC_MIN4    37.38
+param set-default SIM_GZ_EC_MIN5    37.38
+param set-default SIM_GZ_EC_MIN6    37.38
+param set-default SIM_GZ_EC_MIN7    37.38
+param set-default SIM_GZ_EC_MIN8    37.38
+param set-default SIM_GZ_EC_MIN9    37.38
+param set-default SIM_GZ_EC_MIN10   37.38
+param set-default SIM_GZ_EC_MIN11   37.38
+param set-default SIM_GZ_EC_MIN12   37.38
 param set-default SIM_GZ_EC_MIN13   150
 
-param set-default SIM_GZ_EC_MAX1    1000
-param set-default SIM_GZ_EC_MAX2    1000
-param set-default SIM_GZ_EC_MAX3    1000
-param set-default SIM_GZ_EC_MAX4    1000
-param set-default SIM_GZ_EC_MAX5    1000
-param set-default SIM_GZ_EC_MAX6    1000
-param set-default SIM_GZ_EC_MAX7    1000
-param set-default SIM_GZ_EC_MAX8    1000
-param set-default SIM_GZ_EC_MAX9    1000
-param set-default SIM_GZ_EC_MAX10   1000
-param set-default SIM_GZ_EC_MAX11   1000
-param set-default SIM_GZ_EC_MAX12   1000
+param set-default SIM_GZ_EC_MAX1    249.23
+param set-default SIM_GZ_EC_MAX2    249.23
+param set-default SIM_GZ_EC_MAX3    249.23
+param set-default SIM_GZ_EC_MAX4    249.23
+param set-default SIM_GZ_EC_MAX5    249.23
+param set-default SIM_GZ_EC_MAX6    249.23
+param set-default SIM_GZ_EC_MAX7    249.23
+param set-default SIM_GZ_EC_MAX8    249.23
+param set-default SIM_GZ_EC_MAX9    249.23
+param set-default SIM_GZ_EC_MAX10   249.23
+param set-default SIM_GZ_EC_MAX11   249.23
+param set-default SIM_GZ_EC_MAX12   249.23
 param set-default SIM_GZ_EC_MAX13   1000
 
 # ============================================
