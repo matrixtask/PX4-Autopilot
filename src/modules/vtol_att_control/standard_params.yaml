@@ -35,6 +35,55 @@ parameters:
       max: 5.0
       increment: 0.01
       decimal: 2
+    VT_TETRA_FWD_EN:
+      description:
+        short: Enable teTra Mk-7 direct pusher assist in hover
+        long: |-
+          Adds a small body-X pusher thrust command from forward pitch demand without
+          modifying the multicopter attitude setpoint. This is intended for airframes
+          whose pusher moment coupling is handled by control allocation.
+      type: int32
+      default: 0
+      min: 0
+      max: 1
+    VT_TETRA_FWD_SC:
+      description:
+        short: teTra Mk-7 direct pusher assist scale
+      type: float
+      default: 0.0
+      min: 0.0
+      max: 1.0
+      increment: 0.01
+      decimal: 2
+    VT_TETRA_FWD_MX:
+      description:
+        short: teTra Mk-7 direct pusher assist maximum thrust
+      type: float
+      default: 0.0
+      min: 0.0
+      max: 0.2
+      increment: 0.01
+      decimal: 2
+    VT_TETRA_FWD_DB:
+      description:
+        short: teTra Mk-7 direct pusher assist pitch deadband
+      type: float
+      default: 3.0
+      unit: deg
+      min: 0.0
+      max: 20.0
+      increment: 0.5
+      decimal: 1
+    VT_TETRA_FWD_SL:
+      description:
+        short: teTra Mk-7 direct pusher assist slew rate
+      type: float
+      default: 0.2
+      unit: 1/s
+      min: 0.0
+      max: 2.0
+      increment: 0.01
+      decimal: 2
     VT_B_TRANS_RAMP:
       description:
         short: Back transition MC motor ramp up time

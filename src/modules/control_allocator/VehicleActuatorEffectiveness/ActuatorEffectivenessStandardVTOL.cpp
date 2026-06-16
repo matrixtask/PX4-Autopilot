@@ -35,8 +35,9 @@
 
 using namespace matrix;
 
-ActuatorEffectivenessStandardVTOL::ActuatorEffectivenessStandardVTOL(ModuleParams *parent)
-	: ModuleParams(parent), _rotors(this), _control_surfaces(this)
+ActuatorEffectivenessStandardVTOL::ActuatorEffectivenessStandardVTOL(ModuleParams *parent, bool decouple_tetra_mk7_em2_yaw)
+	: ModuleParams(parent), _rotors(this), _control_surfaces(this),
+	  _decouple_tetra_mk7_em2_yaw(decouple_tetra_mk7_em2_yaw)
 {
 }
 
@@ -50,8 +51,13 @@ ActuatorEffectivenessStandardVTOL::getEffectivenessMatrix(Configuration &configu
 
 	// Motors
 	configuration.selected_matrix = 0;
-	_rotors.enablePropellerTorqueNonUpwards(false);
+	_rotors.enablePropellerTorqueNonUpwards(true);
 	const bool mc_rotors_added_successfully = _rotors.addActuators(configuration);
+
+	if (_decouple_tetra_mk7_em2_yaw) {
+		applyTeTraMk7EM2YawDecoupling(configuration);
+	}
+
 	_upwards_motors_mask = _rotors.getUpwardsMotors();
 	_forwards_motors_mask = _rotors.getForwardsMotors();
 
@@ -61,6 +67,65 @@ ActuatorEffectivenessStandardVTOL::getEffectivenessMatrix(Configuration &configu
 	const bool surfaces_added_successfully = _control_surfaces.addActuators(configuration);
 
 	return (mc_rotors_added_successfully && surfaces_added_successfully);
+}
+
+void
+ActuatorEffectivenessStandardVTOL::applyTeTraMk7EM2YawDecoupling(ActuatorEffectiveness::Configuration &configuration)
+{
+	ActuatorEffectiveness::EffectivenessMatrix &effectiveness = configuration.effectiveness_matrices[0];
+
+	// The Mk-7 EM2 lift rotors are laterally tilted. Keep yaw out of the
+	// linear allocator because the physically useful yaw groups are not the
+	// full geometric R+/R- sets.
+	for (int rotor_index = 0; rotor_index < configuration.num_actuators_matrix[0]; ++rotor_index) {
+		effectiveness(ControlAxis::YAW, rotor_index) = 0.f;
+	}
+}
+
+void
+ActuatorEffectivenessStandardVTOL::applyTeTraMk7EM2YawSetpoint(const matrix::Vector<float, NUM_AXES> &control_sp,
+		ActuatorVector &actuator_sp, const ActuatorVector &actuator_min, const ActuatorVector &actuator_max) const
+{
+	static constexpr int yaw_positive_rotors[] = {1, 4, 6, 11};
+	static constexpr int yaw_negative_rotors[] = {0, 5, 7, 10};
+
+	const float yaw_sp = control_sp(ControlAxis::YAW);
+
+	if (fabsf(yaw_sp) < 1e-5f) {
+		return;
+	}
+
+	// Use only the thrust-increase group for each yaw direction:
+	// R+ = rotors 2/5/7/12, R- = rotors 1/6/8/11 (1-based numbering).
+	// The other same-yaw-sign lift rotors add a large roll moment
+	// (for example, rotors 9/10 create P- during R+; the R- case is
+	// handled symmetrically), so they stay out of this dedicated yaw mix.
+	// Pulling down the opposite group can reintroduce roll through saturation
+	// and desaturation, so it is intentionally not used for yaw authority.
+	const int *yaw_rotors = yaw_sp > 0.f ? yaw_positive_rotors : yaw_negative_rotors;
+	// control_sp(YAW) is already normalized by the rate controller. Map it to
+	// a normalized motor increment instead of physical moment units.
+	float yaw_delta = fabsf(yaw_sp) * _tetra_mk7_em2_yaw_mix_scale;
+
+	for (int rotor_index_idx = 0; rotor_index_idx < 4; ++rotor_index_idx) {
+		const int yaw_rotor = yaw_rotors[rotor_index_idx];
+
+		if (PX4_ISFINITE(actuator_sp(yaw_rotor))) {
+			yaw_delta = math::min(yaw_delta, actuator_max(yaw_rotor) - actuator_sp(yaw_rotor));
+		}
+	}
+
+	if (yaw_delta <= 0.f) {
+		return;
+	}
+
+	for (int rotor_index_idx = 0; rotor_index_idx < 4; ++rotor_index_idx) {
+		const int yaw_rotor = yaw_rotors[rotor_index_idx];
+
+		if (PX4_ISFINITE(actuator_sp(yaw_rotor))) {
+			actuator_sp(yaw_rotor) += yaw_delta;
+		}
+	}
 }
 
 void ActuatorEffectivenessStandardVTOL::allocateAuxilaryControls(const float dt, int matrix_index,
@@ -87,6 +152,10 @@ void ActuatorEffectivenessStandardVTOL::updateSetpoint(const matrix::Vector<floa
 		int matrix_index, ActuatorVector &actuator_sp, const ActuatorVector &actuator_min, const ActuatorVector &actuator_max)
 {
 	if (matrix_index == 0) {
+		if (_decouple_tetra_mk7_em2_yaw) {
+			applyTeTraMk7EM2YawSetpoint(control_sp, actuator_sp, actuator_min, actuator_max);
+		}
+
 		stopMaskedMotorsWithZeroThrust(_forwards_motors_mask, actuator_sp);
 	}
 }

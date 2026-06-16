@@ -72,7 +72,7 @@ public:
 	ActuatorEffectiveness() = default;
 	virtual ~ActuatorEffectiveness() = default;
 
-	static constexpr int NUM_ACTUATORS = 16;
+	static constexpr int NUM_ACTUATORS = 24;
 	static constexpr int NUM_AXES = 6;
 
 	enum ControlAxis {
