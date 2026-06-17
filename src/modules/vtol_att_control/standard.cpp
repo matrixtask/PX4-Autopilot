@@ -277,12 +277,60 @@ void Standard::update_mc_state()
 {
 	VtolType::update_mc_state();
 
-	_pusher_throttle = VtolType::pusher_assist();
+	_pusher_throttle = VtolType::pusher_assist() + teTraDirectPusherAssist();
+	_pusher_throttle = math::constrain(_pusher_throttle, 0.0f, 0.9f);
 }
 
 void Standard::update_fw_state()
 {
 	VtolType::update_fw_state();
+}
+
+float Standard::teTraDirectPusherAssist()
+{
+	const hrt_abstime now = hrt_absolute_time();
+	const float dt = _last_time_tetra_direct_pusher_update == 0 ? 0.02f :
+			 math::constrain((now - _last_time_tetra_direct_pusher_update) * 1e-6f, 0.001f, 0.1f);
+	_last_time_tetra_direct_pusher_update = now;
+
+	float target_thrust = 0.0f;
+
+	const bool landing_setpoint = _attc->get_pos_sp_triplet()->current.valid
+				      && _attc->get_pos_sp_triplet()->current.type == position_setpoint_s::SETPOINT_TYPE_LAND;
+
+	if (_param_vt_tetra_fwd_en.get() > 0
+	    && _param_vt_tetra_fwd_sc.get() > FLT_EPSILON
+	    && _param_vt_tetra_fwd_mx.get() > FLT_EPSILON
+	    && _v_control_mode->flag_control_climb_rate_enabled
+	    && !_vtol_vehicle_status->fixed_wing_system_failure
+	    && !landing_setpoint) {
+
+		const Dcmf R(Quatf(_v_att->q));
+		const Dcmf R_sp(Quatf(_mc_virtual_att_sp->q_d));
+		const Eulerf euler(R);
+
+		Vector3f body_z_sp(R_sp(0, 2), R_sp(1, 2), R_sp(2, 2));
+		body_z_sp = Dcmf(Eulerf(0.0f, 0.0f, -euler(2))) * body_z_sp;
+		body_z_sp.normalize();
+
+		const float pitch_setpoint = atan2f(body_z_sp(0), body_z_sp(2));
+		const float deadband = math::radians(_param_vt_tetra_fwd_db.get());
+		const float forward_pitch = math::max(-pitch_setpoint - deadband, 0.0f);
+
+		target_thrust = math::constrain(forward_pitch * _param_vt_tetra_fwd_sc.get(),
+						0.0f, _param_vt_tetra_fwd_mx.get());
+	}
+
+	if (_param_vt_tetra_fwd_sl.get() > FLT_EPSILON) {
+		const float max_delta = _param_vt_tetra_fwd_sl.get() * dt;
+		_tetra_direct_pusher_throttle += math::constrain(target_thrust - _tetra_direct_pusher_throttle,
+						 -max_delta, max_delta);
+
+	} else {
+		_tetra_direct_pusher_throttle = target_thrust;
+	}
+
+	return _tetra_direct_pusher_throttle;
 }
 
 /**

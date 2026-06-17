@@ -263,6 +263,14 @@ ControlAllocator::update_effectiveness_source()
 			tmp = new ActuatorEffectivenessSpacecraft(this);
 			break;
 
+		case EffectivenessSource::SPACECRAFT_3D:
+			tmp = new ActuatorEffectivenessSpacecraft(this);
+			break;
+
+		case EffectivenessSource::TeTra_MK7_EM2:
+			tmp = new ActuatorEffectivenessStandardVTOL(this, true);
+			break;
+
 		case EffectivenessSource::ROVER_ACKERMANN: // Unreachable: Rover startup scripts don't load control_allocator. Controllers publish actuator_outputs directly.
 		case EffectivenessSource::ROVER_DIFFERENTIAL:
 		case EffectivenessSource::ROVER_MECANUM:
@@ -468,6 +476,7 @@ void
 ControlAllocator::update_effectiveness_matrix_if_needed(EffectivenessUpdateReason reason)
 {
 	ActuatorEffectiveness::Configuration config{};
+
 
 	if (reason == EffectivenessUpdateReason::NO_EXTERNAL_UPDATE
 	    && hrt_elapsed_time(&_last_effectiveness_update) < 100_ms) { // rate-limit updates

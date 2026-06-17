@@ -51,7 +51,7 @@
 class ActuatorEffectivenessStandardVTOL : public ModuleParams, public ActuatorEffectiveness
 {
 public:
-	ActuatorEffectivenessStandardVTOL(ModuleParams *parent);
+	ActuatorEffectivenessStandardVTOL(ModuleParams *parent, bool decouple_tetra_mk7_em2_yaw = false);
 	virtual ~ActuatorEffectivenessStandardVTOL() = default;
 
 	bool getEffectivenessMatrix(Configuration &configuration, EffectivenessUpdateReason external_update) override;
@@ -81,6 +81,10 @@ public:
 	void setFlightPhase(const FlightPhase &flight_phase) override;
 
 private:
+	void applyTeTraMk7EM2YawDecoupling(ActuatorEffectiveness::Configuration &configuration);
+	void applyTeTraMk7EM2YawSetpoint(const matrix::Vector<float, NUM_AXES> &control_sp, ActuatorVector &actuator_sp,
+					 const ActuatorVector &actuator_min, const ActuatorVector &actuator_max) const;
+
 	ActuatorEffectivenessRotors _rotors;
 	ActuatorEffectivenessControlSurfaces _control_surfaces;
 
@@ -88,6 +92,8 @@ private:
 	ActuatorBitmask _forwards_motors_mask{};
 
 	int _first_control_surface_idx{0}; ///< applies to matrix 1
+	bool _decouple_tetra_mk7_em2_yaw{false};
+	float _tetra_mk7_em2_yaw_mix_scale{1.f};
 
 	uORB::Subscription _flaps_setpoint_sub{ORB_ID(flaps_setpoint)};
 	uORB::Subscription _spoilers_setpoint_sub{ORB_ID(spoilers_setpoint)};
