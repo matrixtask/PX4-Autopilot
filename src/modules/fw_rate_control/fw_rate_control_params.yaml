@@ -317,6 +317,36 @@ parameters:
       min: 0.0
       decimal: 1
       increment: 0.01
+    FW_YD_GAIN:
+      description:
+        short: Yaw damper gain (washout-filtered yaw-rate feedback to rudder)
+        long: |-
+          Proportional gain applied to the washout (high-pass) filtered yaw rate and
+          added as negative feedback to the yaw torque setpoint (rudder). Actively
+          damps the dutch-roll mode without fighting steady turn coordination, since
+          the washout filter rejects the steady yaw rate of a coordinated turn.
+          Set to 0 to disable. Tune up until the lateral oscillation is well damped.
+      type: float
+      default: 0.0
+      min: 0.0
+      max: 2.0
+      decimal: 3
+      increment: 0.01
+    FW_YD_TAU:
+      description:
+        short: Yaw damper washout time constant
+        long: |-
+          Time constant of the washout (high-pass) filter on yaw rate used by the
+          yaw damper (FW_YD_GAIN). The filter passes oscillations faster than
+          ~1/(2*pi*FW_YD_TAU) Hz (the dutch-roll mode) while rejecting the steady
+          yaw rate of a coordinated turn. Larger = lower corner frequency.
+      type: float
+      default: 4.0
+      min: 0.5
+      max: 20.0
+      unit: s
+      decimal: 1
+      increment: 0.5
     FW_SPOILERS_MAN:
       description:
         short: Spoiler input in manual flight

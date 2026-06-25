@@ -493,6 +493,20 @@ parameters:
       max: 2.0
       decimal: 2
       increment: 0.05
+    FW_LOIT_SNAP_T:
+      description:
+        short: Loiter-entry snap-continuous curvature ramp time
+        long: |-
+          On entering a loiter, ramp the commanded lateral acceleration (path curvature)
+          from 0 to the full circle value over this time using a 9th-order minimum-snap
+          step, so centripetal accel / bank build up snap-continuously (clothoid-like entry)
+          instead of stepping at capture. 0 disables (immediate constant-radius entry).
+      type: float
+      default: 0.0
+      min: 0.0
+      max: 15.0
+      decimal: 1
+      increment: 0.5
     NPFG_SW_DST_MLT:
       description:
         short: NPFG switch distance multiplier

@@ -29,6 +29,21 @@ parameters:
       max: 40
       decimal: 1
       increment: 0.5
+    FW_R_SNAP_T:
+      description:
+        short: Roll setpoint snap-continuous (P9) shaper time
+        long: |-
+          If > 0, the roll angle setpoint is shaped with a 9th-order minimum-snap (P9)
+          rest-to-rest ramp of this duration on a step command (e.g. turn entry), so roll
+          rate, acceleration, jerk and snap are all continuous at both ends. 0 uses the
+          linear FW_PN_R_SLEW_MAX rate limiter instead.
+      type: float
+      default: 0.0
+      unit: s
+      min: 0.0
+      max: 15.0
+      decimal: 1
+      increment: 0.5
     FW_THR_SLEW_MAX:
       description:
         short: Throttle max slew rate

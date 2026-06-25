@@ -400,6 +400,8 @@ private:
 	float _spoilers_setpoint{0.f};
 
 	hrt_abstime _time_in_fixed_bank_loiter{0}; // [us]
+	hrt_abstime _loiter_entry_time{0}; // [us] clothoid loiter-entry snap ramp start
+	bool _was_in_loiter{false};
 	float _min_current_sp_distance_xy{FLT_MAX};
 
 #ifdef CONFIG_FIGURE_OF_EIGHT
@@ -837,6 +839,7 @@ private:
 
 	DEFINE_PARAMETERS(
 		(ParamFloat<px4::params::FW_R_LIM>) _param_fw_r_lim,
+		(ParamFloat<px4::params::FW_LOIT_SNAP_T>) _param_fw_loit_snap_t,
 
 		(ParamFloat<px4::params::NPFG_PERIOD>) _param_npfg_period,
 		(ParamFloat<px4::params::NPFG_DAMPING>) _param_npfg_damping,

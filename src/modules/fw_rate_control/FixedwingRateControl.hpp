@@ -141,6 +141,10 @@ private:
 	static constexpr float _kAirspeedFilterTimeConstant{1.f};
 	AlphaFilter<float> _airspeed_filter_for_torque_scaling{_kAirspeedFilterTimeConstant};
 
+	// Yaw damper: low-pass of yaw rate; washout (high-pass) = raw - low-pass.
+	// Provides active dutch-roll damping to the rudder via FW_YD_GAIN / FW_YD_TAU.
+	AlphaFilter<float> _yaw_rate_lpf_for_washout{};
+
 	float _airspeed_scaling{1.0f};
 
 	bool _landed{true};
@@ -197,6 +201,8 @@ private:
 		(ParamFloat<px4::params::FW_PR_D>) _param_fw_pr_d,
 
 		(ParamFloat<px4::params::FW_RLL_TO_YAW_FF>) _param_fw_rll_to_yaw_ff,
+		(ParamFloat<px4::params::FW_YD_GAIN>) _param_fw_yd_gain,
+		(ParamFloat<px4::params::FW_YD_TAU>) _param_fw_yd_tau,
 		(ParamFloat<px4::params::FW_RR_FF>) _param_fw_rr_ff,
 		(ParamFloat<px4::params::FW_RR_I>) _param_fw_rr_i,
 		(ParamFloat<px4::params::FW_RR_IMAX>) _param_fw_rr_imax,

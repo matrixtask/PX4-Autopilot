@@ -290,6 +290,34 @@ parameters:
       max: 45.0
       increment: 0.1
       decimal: 1
+    VT_DLC_GAIN:
+      description:
+        short: Transition DLC (flaperon) feed-forward gain
+        long: |-
+          Peak flaperon (symmetric aileron) deflection scheduled OPEN-LOOP during the
+          front transition to fill the rotor->wing lift gap as the lift rotors fade.
+          Profile = gain*4*w*(1-w) of the MC throttle weight w (0 at the MC and FW ends,
+          peak mid-fade; snap-continuous). 0 in cruise. Tune for ~0 transition altitude
+          change (a slight climb is acceptable, a dip is not).
+      type: float
+      default: 0.5
+      min: 0.0
+      max: 1.0
+      decimal: 2
+      increment: 0.05
+    VT_FW_LK_MC:
+      description:
+        short: Lock the transition command to MC (suppress spurious FW requests)
+        long: |-
+          When 1, force the VTOL transition command to MULTICOPTER every cycle, so a
+          commanded back-transition is NOT overridden by the commander/navigator auto-
+          requesting fixed-wing at high forward speed. Set ONLY during the landing decel
+          (gate -> hover) so the decel runs in TRANSITION_TO_MC and the MC position
+          controller holds altitude (no FW free-fall dip). 0 = stock behaviour.
+      type: int32
+      default: 0
+      min: 0
+      max: 1
     VT_SPOILER_MC_LD:
       description:
         short: Spoiler setting while landing (hover)

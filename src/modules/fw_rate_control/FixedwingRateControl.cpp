@@ -440,6 +440,22 @@ void FixedwingRateControl::Run()
 		_vehicle_torque_setpoint.xyz[2] = math::constrain(_vehicle_torque_setpoint.xyz[2] + _param_fw_rll_to_yaw_ff.get() *
 						  _vehicle_torque_setpoint.xyz[0], -1.f, 1.f);
 
+		// Yaw damper: washout (high-pass) filtered yaw-rate feedback to the rudder.
+		// Actively damps the lightly-damped dutch-roll mode at high dynamic pressure.
+		// The washout (raw - low-pass) rejects the steady yaw rate of a coordinated
+		// turn, so the damper does not fight turn coordination. Only in FW / transition.
+		if (_param_fw_yd_gain.get() > FLT_EPSILON && _in_fw_or_transition_wo_tailsitter_transition
+		    && _vcontrol_mode.flag_control_rates_enabled) {
+			_yaw_rate_lpf_for_washout.setParameters(dt, _param_fw_yd_tau.get());
+			const float yaw_rate_lp = _yaw_rate_lpf_for_washout.update(rates(2));
+			const float yaw_rate_washout = rates(2) - yaw_rate_lp; // high-pass
+			_vehicle_torque_setpoint.xyz[2] = math::constrain(
+				_vehicle_torque_setpoint.xyz[2] - _param_fw_yd_gain.get() * yaw_rate_washout, -1.f, 1.f);
+
+		} else {
+			_yaw_rate_lpf_for_washout.reset(rates(2));
+		}
+
 		// Tailsitter: rotate back to body frame from airspeed frame
 		if (_vehicle_status.is_vtol_tailsitter) {
 			const float helper = _vehicle_torque_setpoint.xyz[0];

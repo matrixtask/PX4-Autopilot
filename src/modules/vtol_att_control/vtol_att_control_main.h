@@ -211,6 +211,8 @@ private:
 	vtol_vehicle_status_s 			_prev_published_vtol_vehicle_status{};
 	float _home_position_z{NAN};
 	float _calibrated_airspeed{NAN};
+	float _dlc_out{0.f};			// slew-limited transition DLC flaperon output
+	hrt_abstime _dlc_last_t{0};
 	hrt_abstime _time_last_airspeed_update{0};
 
 	float _air_density{atmosphere::kAirDensitySeaLevelStandardAtmos};	// [kg/m^3]
@@ -247,6 +249,8 @@ private:
 	DEFINE_PARAMETERS(
 		(ParamInt<px4::params::VT_TYPE>) _param_vt_type,
 		(ParamFloat<px4::params::VT_SPOILER_MC_LD>) _param_vt_spoiler_mc_ld,
+		(ParamFloat<px4::params::VT_DLC_GAIN>) _param_vt_dlc_gain,
+		(ParamInt<px4::params::VT_FW_LK_MC>) _param_vt_fw_lk_mc,
 		(ParamBool<px4::params::FW_USE_AIRSPD>) _param_fw_use_airspd
 	)
 };

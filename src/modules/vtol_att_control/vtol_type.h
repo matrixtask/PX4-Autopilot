@@ -222,6 +222,10 @@ public:
 
 	mode get_mode() {return _common_vtol_mode;}
 
+	// Multicopter throttle weight (1 in MC, ramps to 0 across the front transition).
+	// Used to schedule the open-loop transition DLC (flaperon) profile.
+	float get_mc_throttle_weight() const { return _mc_throttle_weight; }
+
 	/**
 	 * @return Minimum front transition time scaled for air density (if available) [s]
 	*/

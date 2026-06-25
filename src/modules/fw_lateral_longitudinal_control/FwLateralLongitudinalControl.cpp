@@ -307,7 +307,12 @@ void FwLateralLongitudinalControl::Run()
 			}
 
 			// roll slew rate
-			roll_body = _roll_slew_rate.update(roll_body, control_interval);
+			const float rsnap_t = _param_fw_r_snap_t.get();
+			if (rsnap_t > FLT_EPSILON) {
+				roll_body = updateRollSnapShaper(roll_body, control_interval, rsnap_t);
+			} else {
+				roll_body = _roll_slew_rate.update(roll_body, control_interval);
+			}
 
 			_att_sp.timestamp = now;
 			const Quatf q(Eulerf(roll_body, pitch_body, yaw_body));
@@ -793,6 +798,36 @@ float FwLateralLongitudinalControl::getCorrectedLateralAccelSetpoint(float later
 }
 float FwLateralLongitudinalControl::mapLateralAccelerationToRollAngle(float lateral_acceleration_sp) const {
 	return  atanf(lateral_acceleration_sp / CONSTANTS_ONE_G);
+}
+
+float FwLateralLongitudinalControl::updateRollSnapShaper(float target, float dt, float shape_time)
+{
+	// Snap-continuous (9th-order minimum-snap, P9) roll-setpoint shaper. Replaces the linear
+	// roll slew on a step command (e.g. turn entry) with a rest-to-rest min-snap ramp so the
+	// roll-rate, roll-accel, jerk and snap are all continuous at the start and end of the move.
+	const float start_thresh = math::radians(4.f);
+	if (!_rsnap_ramping) {
+		if (fabsf(target - _rsnap_out) > start_thresh) {
+			_rsnap_x0 = _rsnap_out;     // begin a ramp from the current shaped output
+			_rsnap_elapsed = 0.f;
+			_rsnap_ramping = true;
+			// [EXIT-ONLY shaper TESTED -> NOT VIABLE 2026-06-25] tried shaping the roll-OUT (|target|<|x0|)
+			// 2.5x slower than the roll-IN to smooth the turn exit without slowing the turn. It FAILED: the
+			// actual roll falls OPEN-LOOP (faster than the shaped setpoint -> accel stayed 87, ring 9.4) and
+			// the slow-exit heading sweep still dropped the U to 1.77. The roll-out smoothing comes from a
+			// GENTLE TURN (slow entry), not the setpoint shape -> tall-U vs smooth-roll-out is a real conflict.
+			// Reverted to the symmetric shaper; the SNAP_T=30 + dh-lead compromise stands.
+		} else {
+			_rsnap_out = target;        // close enough: track directly
+			return _rsnap_out;
+		}
+	}
+	_rsnap_elapsed += dt;
+	const float x = math::constrain(_rsnap_elapsed / shape_time, 0.f, 1.f);
+	const float p9 = x * x * x * x * x * (126.f + x * (-420.f + x * (540.f + x * (-315.f + x * 70.f))));
+	_rsnap_out = _rsnap_x0 + (target - _rsnap_x0) * p9;
+	if (x >= 1.f) { _rsnap_ramping = false; }
+	return _rsnap_out;
 }
 
 void FwLateralLongitudinalControl::setDefaultLongitudinalControlConfiguration(hrt_abstime timestamp) {

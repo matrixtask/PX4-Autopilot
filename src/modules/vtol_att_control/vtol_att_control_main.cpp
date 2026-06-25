@@ -399,6 +399,14 @@ VtolAttitudeControl::Run()
 		action_request_poll();
 		vehicle_cmd_poll();
 
+		// LANDING-DECEL MC LOCK: when VT_FW_LK_MC is set, force the transition command to MC every
+		// cycle so a commanded back-transition is NOT overridden by the commander/navigator auto-
+		// requesting FW at high forward speed. This keeps the landing decel in TRANSITION_TO_MC (MC
+		// position controller holds altitude) -> no FW free-fall dip. Gated to the decel by the mission.
+		if (_param_vt_fw_lk_mc.get() > 0) {
+			_transition_command = vtol_vehicle_status_s::VEHICLE_VTOL_STATE_MC;
+		}
+
 		vehicle_air_data_s air_data;
 
 		if (_vehicle_air_data_sub.update(&air_data)) {
@@ -486,7 +494,29 @@ VtolAttitudeControl::Run()
 
 			// flaps
 			normalized_unsigned_setpoint_s flaps_setpoint;
-			flaps_setpoint.normalized_setpoint = 0.f; // for now always set flaps to 0 in transitions and hover
+			// Transition DLC (flaperon): open-loop feed-forward lift bump scheduled on the MC
+			// throttle weight to fill the rotor->wing lift gap. 4*w*(1-w) peaks mid-fade, 0 at
+			// the MC and FW ends (snap-continuous); 0 in cruise (this block is skipped in FW).
+			float dlc_flaps = 0.f;
+			if (_vtol_vehicle_status.vehicle_vtol_state == vtol_vehicle_status_s::VEHICLE_VTOL_STATE_TRANSITION_TO_FW
+			    && _vtol_type != nullptr) {
+				float x = 1.f - _vtol_type->get_mc_throttle_weight();  // fade progress: 0=MC, 1=full cut
+				if (x < 0.f) { x = 0.f; }
+				if (x > 1.f) { x = 1.f; }
+				// 9th-order minimum-snap step P9(x)=x^5(126-420x+540x^2-315x^3+70x^4): 0->1,
+				// MAX at the final rotor cut (x=1) where the lift gap is worst; p',p'''' vanish
+				// at both ends => snap-continuous (no jerk step at the handoff).
+				const float P9 = x*x*x*x*x*(126.f + x*(-420.f + x*(540.f + x*(-315.f + x*70.f))));
+				dlc_flaps = _param_vt_dlc_gain.get() * P9;
+				if (dlc_flaps < 0.f) { dlc_flaps = 0.f; }
+				if (dlc_flaps > 1.f) { dlc_flaps = 1.f; }
+			}
+			// slew-limit so the post-completion / cruise return to 0 stays continuous
+			const float dlc_dt = math::constrain((hrt_absolute_time() - _dlc_last_t) * 1e-6f, 0.001f, 0.1f);
+			_dlc_last_t = hrt_absolute_time();
+			const float dlc_step = 0.5f * dlc_dt;  // <= 0.5 /s -> full release over ~2 s
+			_dlc_out += math::constrain(dlc_flaps - _dlc_out, -dlc_step, dlc_step);
+			flaps_setpoint.normalized_setpoint = _dlc_out;
 			flaps_setpoint.timestamp = hrt_absolute_time();
 			_flaps_setpoint_pub.publish(flaps_setpoint);
 

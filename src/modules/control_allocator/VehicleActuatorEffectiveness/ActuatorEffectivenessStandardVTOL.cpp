@@ -55,6 +55,20 @@ ActuatorEffectivenessStandardVTOL::getEffectivenessMatrix(Configuration &configu
 	_upwards_motors_mask = _rotors.getUpwardsMotors();
 	_forwards_motors_mask = _rotors.getForwardsMotors();
 
+	// Mk-7 fix (ablation-verified INDEPENDENT of the gz pusher-direction fix): treat the forward (pusher)
+	// motor(s) as PURE forward thrust by zeroing their torque rows (roll/pitch/yaw) in the multirotor matrix.
+	// The pusher's CG offset (CA_ROTOR_PZ) otherwise couples forward thrust into pitch, and
+	// SequentialDesaturation has no thrust_x pass, so during the front transition the forward-thrust demand
+	// starves the lift-rotor pitch differential -> uncontrolled nose-up divergence (reverting this with the
+	// pusher direction already correct reproduces a 69 deg pitch divergence). Geometry CA_ROTOR12_PZ kept honest.
+	for (int i = 0; i < NUM_ACTUATORS; ++i) {
+		if (_forwards_motors_mask & (1u << i)) {
+			configuration.effectiveness_matrices[0](0, i) = 0.f; // roll
+			configuration.effectiveness_matrices[0](1, i) = 0.f; // pitch
+			configuration.effectiveness_matrices[0](2, i) = 0.f; // yaw
+		}
+	}
+
 	// Control Surfaces
 	configuration.selected_matrix = 1;
 	_first_control_surface_idx = configuration.num_actuators_matrix[configuration.selected_matrix];
@@ -102,7 +116,10 @@ void ActuatorEffectivenessStandardVTOL::setFlightPhase(const FlightPhase &flight
 	// update stopped motors
 	switch (flight_phase) {
 	case FlightPhase::FORWARD_FLIGHT:
-		_stopped_motors_mask |= _upwards_motors_mask;
+		// Mk-7 smooth handoff: do NOT hard-stop the upwards (lift) motors at FW entry. standard.cpp ramps
+		// their thrust/attitude contribution to 0 over ~2 s so roll authority transfers gradually to the
+		// ailerons (the abrupt stop caused a roll-over). The motors then idle at min in FW.
+		// _stopped_motors_mask |= _upwards_motors_mask;
 		break;
 
 	case FlightPhase::HOVER_FLIGHT:

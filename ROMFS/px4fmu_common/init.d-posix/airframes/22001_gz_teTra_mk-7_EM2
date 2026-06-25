@@ -15,6 +15,14 @@ param set-default SIM_GZ_EN 1
 
 param set-default SENS_EN_ARSPDSIM 1
 
+# Airspeed: use the (simulated) sensor as primary and disable the innovation
+# checks that otherwise reject valid airspeed during fast acceleration / the
+# rotors-off FW handoff (validated airspeed was getting stuck near 0 -> blind TECS).
+# Baked in here so they take effect at boot (runtime MAVLink set was unreliable).
+param set-default ASPD_PRIMARY 1
+param set-default ASPD_DO_CHECKS 0
+param set-default ASPD_FALLBACK 1
+
 # TODO: Enable motor failure detection when the
 # VTOL no longer reports 0A for all ESCs in SITL
 param set-default FD_ACT_EN 0
@@ -213,24 +221,36 @@ param set-default SIM_GZ_SV_FUNC2 202
 param set-default SIM_GZ_SV_FUNC3 203
 param set-default SIM_GZ_SV_FUNC4 204
 param set-default SIM_GZ_SV_FUNC5 205
+# v7 transition flaps: PX4 output disabled (0) for the SITL transition experiment; deployed directly in gz
+# (gz-topic) during the transition so the flapped stall (~32 m/s) is at/below the handoff airspeed.
+param set-default SIM_GZ_SV_FUNC6 0
+param set-default SIM_GZ_SV_FUNC7 0
 
 
 
 param set-default COM_RC_IN_MODE 1
 
-# Control surface allocation (elevator, ailerons)
-param set-default CA_SV_CS_COUNT 5
+# Control surface allocation (elevator, ailerons, central flaps)
+param set-default CA_SV_CS_COUNT 7
 
 param set-default CA_SV_CS0_TYPE 1
 param set-default CA_SV_CS0_TRQ_R -0.5
 param set-default CA_SV_CS1_TYPE 2
 param set-default CA_SV_CS1_TRQ_R 0.5
+# Flaperon: ailerons also take a symmetric (flap) component = the transition DLC.
+param set-default CA_SV_CS0_FLAP 0.4
+param set-default CA_SV_CS1_FLAP 0.4
 param set-default CA_SV_CS2_TYPE 3
 param set-default CA_SV_CS2_TRQ_P 1
 param set-default CA_SV_CS3_TYPE 4
 param set-default CA_SV_CS3_TRQ_Y 1
 param set-default CA_SV_CS4_TYPE 4
 param set-default CA_SV_CS4_TRQ_Y 1
+# v7 central TRANSITION high-lift flaps: LeftFlap=9, RightFlap=10 (linear-actuator, slow).
+# Deploy in transition window 70-100 kt (raises CL_max 1.3->1.79, stall 78->66 kt), retract for 140 kt cruise.
+# Driven by flaps setpoint (default 0 = retracted); airspeed/transition schedule is the proposed control step.
+param set-default CA_SV_CS5_TYPE 9
+param set-default CA_SV_CS6_TYPE 10
 
 # ============================================
 # Flight Controller Tuning Parameters
@@ -255,11 +275,11 @@ param set-default FW_T_SINK_MIN 2.2
 param set-default MC_AIRMODE 0
 param set-default MC_ROLL_P 0.6
 param set-default MC_PITCH_P 0.45
-param set-default MC_YAW_P 0.12
+param set-default MC_YAW_P 0.25
 param set-default MC_YAW_WEIGHT 0.3
 param set-default MC_ROLLRATE_P 0.14
 param set-default MC_PITCHRATE_P 0.14
-param set-default MC_YAWRATE_P 0.16
+param set-default MC_YAWRATE_P 0.35
 param set-default MC_ROLLRATE_I 0.03
 param set-default MC_PITCHRATE_I 0.03
 param set-default MC_YAWRATE_I 0.002
@@ -279,7 +299,7 @@ param set-default MPC_YAWRAUTO_ACC 5
 param set-default WV_EN 0
 param set-default MPC_TILTMAX_AIR 16
 param set-default MPC_TILTMAX_LND 5
-param set-default MPC_XY_P 0.12
+param set-default MPC_XY_P 0.25
 param set-default MPC_XY_CRUISE 1.0
 param set-default MPC_XY_VEL_MAX 1.2
 param set-default MPC_XY_VEL_P_ACC 0.75
@@ -293,5 +313,28 @@ param set-default MPC_XY_TRAJ_P 0.10
 param set-default VT_FWD_THRUST_EN 0
 param set-default VT_FWD_THRUST_SC 0
 param set-default VT_PITCH_MIN -5
-param set-default VT_F_TRANS_THR 1
+# v7-fw: source-grounded transition tuning. ROOT CAUSE was VT_F_TR_OL_TM (default 6 s): the early
+# quadchute (vtol_type.cpp:332) cancels the transition if airspeed < VT_ARSP_BLEND after this time, and the
+# heavy Mk-7 can't reach a high blend airspeed in 6 s -> always quadchuted. Fix: long OL_TM + reachable
+# blend/trans airspeeds + flaps deployed (lower stall ~37->32 m/s) so the sub-30 handoff is survivable.
+# gentle pusher onset (slew 0.1 = ~8 s ramp) + moderate throttle 0.8 -> accelerate without the abrupt
+# nose/roll upset that THR=1.0 caused at the transition start (the divergence was at ~8 m/s, full rotors).
+param set-default VT_F_TRANS_THR 0.8
+param set-default VT_PSHER_SLEW 0.1
+param set-default VT_F_TRANS_DUR 15
+param set-default VT_F_TR_OL_TM 30
+param set-default VT_TRANS_TIMEOUT 30
+param set-default VT_TRANS_MIN_TM 4
+# keep lift rotors (attitude authority) until 28 m/s, then a TIGHT blend to 33 (above flapped stall ~28-32,
+# where surfaces have enough q) -> bridges the transition valley in both lift AND roll authority.
+param set-default VT_ARSP_BLEND 28
+param set-default VT_ARSP_TRANS 33
+param set-default VT_B_TRANS_DUR 10
+# v7-fw recommendation #1: lift-rotor DIFFERENTIAL THRUST in FW (bitmask 7 = yaw+roll+pitch) keeps the
+# rotors available for attitude authority through/after the transition -> bridges the low-q roll-authority
+# gap that caused the hand-off roll-over, WITHOUT enlarging the (servo-feasible) ailerons. Reversible.
+param set-default VT_FW_DIFTHR_EN 7
+param set-default VT_FW_DIFTHR_S_R 2.0
+param set-default VT_FW_DIFTHR_S_P 1.5
+param set-default VT_FW_DIFTHR_S_Y 1.0
 param set-default VT_TYPE 2

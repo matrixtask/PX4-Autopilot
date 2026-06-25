@@ -198,6 +198,21 @@ void Standard::update_transition_state()
 	float pitch_body = attitude_setpoint_euler.theta();
 	float yaw_body = attitude_setpoint_euler.psi();
 
+	// AIRSPEED-SCHEDULED lift-handoff floor for the MC motor weight: the wing carries lift L(V) ~ V^2;
+	// floor the rotors at exactly the deficit the wing cannot carry -> wing + rotor ~= weight, continuous.
+	// floor = max(0, 1 - (CAS/VT_LIFT_HND_V)^2). ~0 at/above the lift=weight speed (FW transition untouched),
+	// rises to 1 (hover) as speed bleeds. Falls back to the flat VT_B_RAMP_MIN when VT_LIFT_HND_V = 0.
+	float lift_floor = _param_vt_b_ramp_min.get();
+	{
+		const float vL = _param_vt_lift_hnd_v.get();
+		const float cas = _attc->get_calibrated_airspeed();
+
+		if (vL > FLT_EPSILON && PX4_ISFINITE(cas) && cas < vL) {
+			const float r = cas / vL;
+			lift_floor = math::max(lift_floor, math::constrain(1.0f - r * r, 0.0f, 1.0f));
+		}
+	}
+
 	if (_vtol_mode == vtol_mode::TRANSITION_TO_FW) {
 
 		if (_v_control_mode->flag_control_climb_rate_enabled) {
@@ -240,23 +255,43 @@ void Standard::update_transition_state()
 		_v_att_sp->thrust_body[0] = _pusher_throttle;
 		const Quatf q_sp(Eulerf(roll_body, pitch_body, yaw_body));
 		q_sp.copyTo(_v_att_sp->q_d);
-		mc_weight = math::constrain(mc_weight, 0.0f, 1.0f);
+		// OVERLAP floor (airspeed-scheduled): keep the lift rotors at >= lift_floor during
+		// TRANSITION_TO_FW so they carry exactly the lift the wing is losing as speed bleeds.
+		mc_weight = math::constrain(mc_weight, lift_floor, 1.0f);
 
 	} else if (_vtol_mode == vtol_mode::TRANSITION_TO_MC) {
 
-		// continually increase mc attitude control as we transition back to mc mode
+		// continually increase mc attitude control as we transition back to mc mode.
+		// Start the ramp from VT_B_RAMP_MIN (not 0) so the lift rotors give partial thrust
+		// IMMEDIATELY and overlap with the still-flying wing -> no zero-thrust free-fall dip.
 		if (_param_vt_b_trans_ramp.get() > FLT_EPSILON) {
-			mc_weight = _time_since_trans_start / _param_vt_b_trans_ramp.get();
+			const float ramp_floor = lift_floor;   // airspeed-scheduled wing->rotor handoff floor
+			mc_weight = ramp_floor + (1.0f - ramp_floor) * (_time_since_trans_start / _param_vt_b_trans_ramp.get());
 		}
 
 		mc_weight = math::constrain(mc_weight, 0.0f, 1.0f);
 
 		if (_v_control_mode->flag_control_climb_rate_enabled) {
 			// control backtransition deceleration using pitch.
-			pitch_body = Eulerf(Quatf(_mc_virtual_att_sp->q_d)).theta();
+			const float pitch_mc = Eulerf(Quatf(_mc_virtual_att_sp->q_d)).theta();
+
+			// (2) GRADUAL WING UNLOAD: blend pitch FW->MC on the AIRSPEED lift schedule (lift_floor),
+			// not the fast mc_weight ramp, so the wing AoA/lift hands off CONTINUOUSLY to the rotors as
+			// speed bleeds (no abrupt pitch step -> no sudden lift loss -> no free-fall dip). The DLC
+			// flaperon fills the residual gap. Enabled only when VT_LIFT_HND_V > 0.
+			if (_param_vt_lift_hnd_v.get() > FLT_EPSILON) {
+				const float pitch_fw = Eulerf(Quatf(_fw_virtual_att_sp->q_d)).theta();
+				pitch_body = lift_floor * pitch_mc + (1.0f - lift_floor) * pitch_fw;
+
+			} else {
+				pitch_body = pitch_mc;
+			}
 
 			// blend roll setpoint between FW and MC
 			const float roll_body_fw = Eulerf(Quatf(_fw_virtual_att_sp->q_d)).phi();
+			// [BETA-KICK] A SLOW P9 roll-out (hold the +15 bank, level gradually) was TESTED to kill the adverse-
+			// sideslip beta kick -> it made it WORSE (spike -71, beta 14.9): holding the bank longer through the
+			// decel builds MORE sideslip. The fast mc_weight blend is the lesser evil. Reverted.
 			roll_body = mc_weight * roll_body + (1.0f - mc_weight) * roll_body_fw;
 		}
 
@@ -264,6 +299,10 @@ void Standard::update_transition_state()
 
 		q_sp.copyTo(_v_att_sp->q_d);
 
+		// [DUTCH-ROLL] The pusher MUST be cut immediately here. A P9 rampdown was TESTED and is CATASTROPHIC:
+		// keeping the pusher running through the high-AoA back-trans pitch-up makes the prop NORMAL FORCE (P-factor)
+		// generate a LARGE yaw moment (yaw rate +1.9->-2.4 became +28 deg/s) -> Dutch roll amplified -> tumble to
+		// -177 deg / 45 m/s crash. The instant cut REMOVES that prop-at-AoA yaw source and is the correct behavior.
 		_pusher_throttle = 0.0f;
 	}
 
@@ -331,6 +370,7 @@ void Standard::fill_actuator_outputs()
 		}
 
 		_thrust_setpoint_0->xyz[0] = _pusher_throttle;
+		_fw_mode_entry_time = 0; // reset the FW-handoff ramp while not in FW
 		break;
 
 	case vtol_mode::TRANSITION_TO_FW:
@@ -344,14 +384,43 @@ void Standard::fill_actuator_outputs()
 		_thrust_setpoint_0->xyz[2] = _vehicle_thrust_setpoint_virtual_mc->xyz[2] * _mc_throttle_weight;
 
 		// FW actuators
+		// [STEP1 RESULT] Pure-MC roll in the back-trans (FW roll zeroed) was TESTED -> roll spike got WORSE
+		// (-72 vs -40): the lift rotors alone (5% thrust at 70 m/s) cannot control the Cl_beta Dutch roll; the
+		// FW ailerons are ESSENTIAL and already saturated. So the spike is a real airframe mode, NOT a blend
+		// artifact, and the FW+MC blend is optimal. Reverted to full FW roll.
 		_torque_setpoint_1->xyz[0] = _vehicle_torque_setpoint_virtual_fw->xyz[0];
 		_torque_setpoint_1->xyz[1] = _vehicle_torque_setpoint_virtual_fw->xyz[1];
 		_torque_setpoint_1->xyz[2] = _vehicle_torque_setpoint_virtual_fw->xyz[2];
 		_thrust_setpoint_0->xyz[0] = _pusher_throttle;
+		_fw_mode_entry_time = 0; // reset the FW-handoff ramp while still transitioning
 
 		break;
 
 	case vtol_mode::FW_MODE:
+
+		// Mk-7 SMOOTH lift->wing handoff: for the first ~2 s of FW, fade the lift-rotor attitude+thrust
+		// contribution (ramp 1->0) instead of cutting it abruptly, so roll authority transfers gradually
+		// to the ailerons. The abrupt stop momentarily exceeded the small v6 ailerons' roll authority and
+		// caused a roll-over; this gradual fade bridges the gap. (Requires the upwards motors NOT be hard-
+		// stopped at FW entry -- see ActuatorEffectivenessStandardVTOL::setFlightPhase.)
+		if (_fw_mode_entry_time == 0) { _fw_mode_entry_time = hrt_absolute_time(); }
+
+		{
+			const float ramp = math::constrain(1.0f - (float)(hrt_absolute_time() - _fw_mode_entry_time) / 2.0e6f,
+							   0.0f, 1.0f);
+			_torque_setpoint_0->xyz[0] = _vehicle_torque_setpoint_virtual_mc->xyz[0] * ramp;
+			_torque_setpoint_0->xyz[1] = _vehicle_torque_setpoint_virtual_mc->xyz[1] * ramp;
+			_torque_setpoint_0->xyz[2] = _vehicle_torque_setpoint_virtual_mc->xyz[2] * ramp;
+			_thrust_setpoint_0->xyz[2] = _vehicle_thrust_setpoint_virtual_mc->xyz[2] * ramp;
+		}
+
+		// Mk-7 ROTOR-ASSISTED STEEP CLIMB: command all lift rotors at a uniform collective in FW so the
+		// rotors carry weight / add climb force (the design 1/4 climb is a low-speed rotor-borne climb; the
+		// forward-thrust-limited pusher alone can only hold ~1/6). Symmetric collective = pure upward body
+		// force, no moment -> the FW surfaces keep attitude. Body-z is +down, so up-thrust is negative.
+		if (_param_vt_fw_mc_thr.get() > 0.01f) {
+			_thrust_setpoint_0->xyz[2] = -_param_vt_fw_mc_thr.get();
+		}
 
 		// FW actuators
 		_torque_setpoint_1->xyz[0] = _vehicle_torque_setpoint_virtual_fw->xyz[0];

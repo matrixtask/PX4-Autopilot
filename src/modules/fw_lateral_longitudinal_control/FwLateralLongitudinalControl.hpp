@@ -146,6 +146,7 @@ private:
 		(ParamFloat<px4::params::FW_P_LIM_MAX>) _param_fw_p_lim_max,
 		(ParamFloat<px4::params::FW_P_LIM_MIN>) _param_fw_p_lim_min,
 		(ParamFloat<px4::params::FW_PN_R_SLEW_MAX>) _param_fw_pn_r_slew_max,
+		(ParamFloat<px4::params::FW_R_SNAP_T>) _param_fw_r_snap_t,
 		(ParamFloat<px4::params::FW_T_HRATE_FF>) _param_fw_t_hrate_ff,
 		(ParamFloat<px4::params::FW_T_ALT_TC>) _param_fw_t_h_error_tc,
 		(ParamFloat<px4::params::FW_T_F_ALT_ERR>) _param_fw_t_fast_alt_err,
@@ -190,6 +191,12 @@ private:
 	bool _wind_valid{false};
 	hrt_abstime _time_wind_last_received{0};
 	SlewRate<float> _roll_slew_rate;
+	// snap-continuous (P9) roll-setpoint shaper state (used when FW_R_SNAP_T > 0)
+	float _rsnap_out{0.f};
+	float _rsnap_x0{0.f};
+	float _rsnap_elapsed{0.f};
+	float _rsnap_shape_t{0.f};   // [exit-only] shape time locked at ramp start (longer for the roll-OUT)
+	bool _rsnap_ramping{false};
 	float _yaw{0.f};
 	struct lateral_control_state {
 		matrix::Vector2f ground_speed;
@@ -232,6 +239,7 @@ private:
 	void updateAltitudeAndHeightRate();
 
 	float mapLateralAccelerationToRollAngle(float lateral_acceleration_sp) const;
+	float updateRollSnapShaper(float target, float dt, float shape_time);
 
 	void updateWind(hrt_abstime now);
 

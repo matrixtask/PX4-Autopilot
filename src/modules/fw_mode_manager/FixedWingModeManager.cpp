@@ -635,6 +635,10 @@ FixedWingModeManager::control_auto(const float control_interval, const Vector2d 
 
 #endif // CONFIG_FIGURE_OF_EIGHT
 
+	if (position_sp_type != position_setpoint_s::SETPOINT_TYPE_LOITER) {
+		_was_in_loiter = false;
+	}
+
 	if (!_vehicle_status.in_transition_to_fw) {
 		publishLocalPositionSetpoint(current_sp);
 	}
@@ -971,7 +975,19 @@ FixedWingModeManager::control_auto_loiter(const float control_interval, const Ve
 	fixed_wing_lateral_setpoint_s fw_lateral_ctrl_sp{empty_lateral_control_setpoint};
 	fw_lateral_ctrl_sp.timestamp = hrt_absolute_time();
 	fw_lateral_ctrl_sp.course = sp.course_setpoint;
-	fw_lateral_ctrl_sp.lateral_acceleration = sp.lateral_acceleration_feedforward;
+	// Clothoid loiter ENTRY (snap-continuous): ramp the commanded lateral accel
+	// (curvature) 0->full over FW_LOIT_SNAP_T via a 9th-order min-snap step P9, so the
+	// centripetal accel / bank build up snap-continuously instead of stepping at capture.
+	float loiter_la = sp.lateral_acceleration_feedforward;
+	const float snap_t = _param_fw_loit_snap_t.get();
+	if (snap_t > FLT_EPSILON) {
+		if (!_was_in_loiter) { _loiter_entry_time = hrt_absolute_time(); }
+		const float x = math::constrain((float)hrt_elapsed_time(&_loiter_entry_time) * 1e-6f / snap_t, 0.f, 1.f);
+		const float p9 = x*x*x*x*x*(126.f + x*(-420.f + x*(540.f + x*(-315.f + x*70.f))));
+		loiter_la *= p9;
+	}
+	_was_in_loiter = true;
+	fw_lateral_ctrl_sp.lateral_acceleration = loiter_la;
 
 	_lateral_ctrl_sp_pub.publish(fw_lateral_ctrl_sp);
 

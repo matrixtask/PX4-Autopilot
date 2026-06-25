@@ -77,12 +77,18 @@ private:
 	float _pusher_throttle{0.0f};
 	float _airspeed_trans_blend_margin{0.0f};
 	hrt_abstime _last_time_pusher_transition_update{0};
+	// Mk-7 smooth lift->wing handoff: fade the lift-rotor attitude+thrust over ~2 s after FW entry instead of
+	// an abrupt cut (the abrupt stop momentarily exceeded the small v6 ailerons' roll authority -> roll-over).
+	hrt_abstime _fw_mode_entry_time{0};
 
 	void parameters_update() override;
 
 	DEFINE_PARAMETERS_CUSTOM_PARENT(VtolType,
 					(ParamFloat<px4::params::VT_PSHER_SLEW>) _param_vt_psher_slew,
 					(ParamFloat<px4::params::VT_B_TRANS_RAMP>) _param_vt_b_trans_ramp,
+					(ParamFloat<px4::params::VT_B_RAMP_MIN>) _param_vt_b_ramp_min,
+					(ParamFloat<px4::params::VT_LIFT_HND_V>) _param_vt_lift_hnd_v,
+					(ParamFloat<px4::params::VT_FW_MC_THR>) _param_vt_fw_mc_thr,
 					(ParamFloat<px4::params::FW_PSP_OFF>) _param_fw_psp_off
 				       )
 };

@@ -47,6 +47,36 @@ parameters:
       max: 20.0
       increment: 0.1
       decimal: 1
+    VT_B_RAMP_MIN:
+      description:
+        short: Back transition MC motor ramp START weight (overlap floor)
+        long: At the start of the back transition the MC motor (mc_weight) ramp begins from
+          this floor instead of 0, so the lift rotors provide partial thrust IMMEDIATELY and
+          overlap with the still-flying wing -> removes the zero-thrust spin-up free-fall dip.
+          0 = stock behaviour (ramp from 0).
+      type: float
+      default: 0.0
+      min: 0.0
+      max: 0.9
+      increment: 0.05
+      decimal: 2
+    VT_LIFT_HND_V:
+      description:
+        short: Airspeed-scheduled wing->rotor lift-handoff speed [m/s]
+        long: |-
+          During a VTOL transition, floor the MC motor weight on an AIRSPEED SCHEDULE:
+          floor = max(0, 1 - (CAS/VT_LIFT_HND_V)^2). VT_LIFT_HND_V is the airspeed at which
+          the WING ALONE carries the full weight (lift = W at the trim CL). So at/above this
+          speed the rotors are ~0 (wing carries all -> normal FW transition untouched), and
+          as speed bleeds the rotors smoothly take over EXACTLY the lift the wing is losing
+          (wing+rotor ~= weight, continuous handoff) -> no abrupt unload, no free-fall dip,
+          minimal extra power. 0 = disabled (use the flat VT_B_RAMP_MIN instead).
+      type: float
+      default: 0.0
+      min: 0.0
+      max: 80.0
+      increment: 1.0
+      decimal: 1
     VT_PSHER_SLEW:
       description:
         short: Pusher throttle ramp up slew rate
@@ -59,4 +89,20 @@ parameters:
       unit: 1/s
       min: 0
       increment: 0.01
+      decimal: 2
+    VT_FW_MC_THR:
+      description:
+        short: Lift-rotor collective in FW mode for a rotor-borne steep climb [0..1]
+        long: |-
+          When > 0, command ALL lift rotors at this uniform collective thrust while in FW_MODE
+          (symmetric -> pure upward body force, no moment; the FW surfaces keep attitude). Lets
+          the rotors carry weight / add climb force so the vehicle can climb steeper than the
+          forward-thrust-limited pusher allows alone (the design 1/4 climb is intrinsically a
+          low-speed rotor-borne climb). Set by the mission during the climb phase, 0 at cruise.
+          0 = stock FW (rotors idle/faded). This is the Mk-7 rotor-assisted climb lever.
+      type: float
+      default: 0.0
+      min: 0.0
+      max: 0.9
+      increment: 0.02
       decimal: 2
