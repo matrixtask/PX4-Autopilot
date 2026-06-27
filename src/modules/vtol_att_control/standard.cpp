@@ -292,6 +292,13 @@ void Standard::update_transition_state()
 			// [BETA-KICK] A SLOW P9 roll-out (hold the +15 bank, level gradually) was TESTED to kill the adverse-
 			// sideslip beta kick -> it made it WORSE (spike -71, beta 14.9): holding the bank longer through the
 			// decel builds MORE sideslip. The fast mc_weight blend is the lesser evil. Reverted.
+			// [P10-ENTRY-COORD TESTED, REVERTED to stock] The entry sideslip beta ~14 deg [the body yaw drifts
+			// 268->278 off the ground track during the back-trans] drives the entry roll transient. TWO C++ fixes
+			// were tried and did NOT reduce it: (1) yaw=ground-course override -> WORSE [the body yaw drifts
+			// regardless -> a 14 deg yaw error the controller fought via roll -> flaperon saturated, roll-osc 3.2];
+			// (2) scaling the FW roll-setpoint *0.35 -> beta unchanged [14.7], a +22 deg roll spike. The beta is a
+			// deep back-trans dynamic [MC velocity-correction yaw + decel coupling], not a yaw-setpoint or FW-bank
+			// effect. STOCK blend kept. Steady descent beta=0 via the OFFBOARD yaw=course [python p10diag].
 			roll_body = mc_weight * roll_body + (1.0f - mc_weight) * roll_body_fw;
 		}
 
