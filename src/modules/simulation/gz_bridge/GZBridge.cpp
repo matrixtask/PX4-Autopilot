@@ -449,7 +449,11 @@ void GZBridge::airspeedCallback(const gz::msgs::AirSpeed &msg)
 	report.timestamp_sample = timestamp;
 	report.device_id = id.devid;
 	report.differential_pressure_pa = msg.diff_pressure(); // hPa to Pa;
-	report.temperature = static_cast<float>(msg.temperature()) + atmosphere::kAbsoluteNullCelsius; // K to C
+	// [AIRSPEED CAL] the gz AirSpeed sensor leaves temperature = 0 K -> this fed -273.15 C into the baro temperature
+	// (_temperature) and corrupted the air density (rho 1.66 vs ~1.19) -> TAS read 16% low. Default to the ISA
+	// sea-level 288.15 K (15 C) when the sim provides no temperature; the baro PRESSURE still sets the altitude density.
+	const float gz_temp_K = static_cast<float>(msg.temperature());
+	report.temperature = (gz_temp_K > 1.0f ? gz_temp_K : 288.15f) + atmosphere::kAbsoluteNullCelsius; // K to C
 	_differential_pressure_pub.publish(report);
 
 	this->_temperature = report.temperature;
