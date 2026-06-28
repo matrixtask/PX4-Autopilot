@@ -429,6 +429,27 @@ void Standard::fill_actuator_outputs()
 			_thrust_setpoint_0->xyz[2] = -_param_vt_fw_mc_thr.get();
 		}
 
+		// [P5 HANDOFF-VALLEY FIX] In FW the MC thrust setpoint is ~0 (the wing + pusher fly), so the stock 2 s
+		// thrust ramp above has nothing to scale -- the lift rotors cut to zero the instant the transition
+		// completes (~CAS 54) while the wing only makes full lift at VT_LIFT_HND_V (~72), leaving a ~10 m
+		// altitude valley at the MC->FW handoff. Command an ABSOLUTE lift-rotor up-thrust on the AIRSPEED lift
+		// schedule floor = 1-(CAS/VT_LIFT_HND_V)^2, peaked at the hover collective VT_LIFT_HND_THR, so the
+		// rotors carry exactly the wing's lift deficit and release smoothly as CAS -> VT_LIFT_HND_V. SELF-
+		// CONTAINED and strictly gated (CAS < VT_LIFT_HND_V AND within 25 s of FW entry) so it cannot leak into
+		// cruise / P8 brake / P9 descent. Takes the LARGER up-thrust (min, body-z up = negative) so it never
+		// reduces an existing VT_FW_MC_THR climb-assist. 0 = disabled (stock instant cut).
+		{
+			const float vL_fw = _param_vt_lift_hnd_v.get();
+			const float cas_fw = _attc->get_calibrated_airspeed();
+			const float t_in_fw = (float)(hrt_absolute_time() - _fw_mode_entry_time) / 1e6f;
+
+			if (_param_vt_lift_hnd_thr.get() > 0.01f && vL_fw > FLT_EPSILON && PX4_ISFINITE(cas_fw)
+			    && cas_fw > 0.0f && cas_fw < vL_fw && t_in_fw < 25.0f) {
+				const float floor = math::constrain(1.0f - (cas_fw / vL_fw) * (cas_fw / vL_fw), 0.0f, 1.0f);
+				_thrust_setpoint_0->xyz[2] = math::min(_thrust_setpoint_0->xyz[2], -floor * _param_vt_lift_hnd_thr.get());
+			}
+		}
+
 		// FW actuators
 		_torque_setpoint_1->xyz[0] = _vehicle_torque_setpoint_virtual_fw->xyz[0];
 		_torque_setpoint_1->xyz[1] = _vehicle_torque_setpoint_virtual_fw->xyz[1];

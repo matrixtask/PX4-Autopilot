@@ -77,6 +77,26 @@ parameters:
       max: 80.0
       increment: 1.0
       decimal: 1
+    VT_LIFT_HND_THR:
+      description:
+        short: Lift-rotor collective at the FW handoff (hover-thrust scale) [-]
+        long: |-
+          Peak lift-rotor collective commanded in FW_MODE during the forward-transition
+          climb-out to bridge the MC->FW lift-handoff valley. In FW the MC thrust setpoint is
+          ~0 (wing+pusher fly), so the stock 2 s fade has nothing to scale and the rotors cut
+          to zero the instant the transition completes (~CAS 54) while the wing only makes full
+          lift at VT_LIFT_HND_V (~72). This commands an ABSOLUTE up-thrust = VT_LIFT_HND_THR *
+          (1 - (CAS/VT_LIFT_HND_V)^2) so the rotors carry the wing's lift deficit and release
+          smoothly as CAS -> VT_LIFT_HND_V. Active ONLY while CAS < VT_LIFT_HND_V and within
+          ~25 s of FW entry (never re-engages in cruise / P8 brake / P9 descent). Set to the
+          airframe hover collective (~0.6); lower to trade a deeper valley for less rotor drag/
+          energy, raise for a shallower valley. 0 = disabled (stock instant cut).
+      type: float
+      default: 0.0
+      min: 0.0
+      max: 1.0
+      increment: 0.05
+      decimal: 2
     VT_PSHER_SLEW:
       description:
         short: Pusher throttle ramp up slew rate

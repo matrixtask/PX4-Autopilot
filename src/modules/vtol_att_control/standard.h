@@ -88,6 +88,7 @@ private:
 					(ParamFloat<px4::params::VT_B_TRANS_RAMP>) _param_vt_b_trans_ramp,
 					(ParamFloat<px4::params::VT_B_RAMP_MIN>) _param_vt_b_ramp_min,
 					(ParamFloat<px4::params::VT_LIFT_HND_V>) _param_vt_lift_hnd_v,
+					(ParamFloat<px4::params::VT_LIFT_HND_THR>) _param_vt_lift_hnd_thr,
 					(ParamFloat<px4::params::VT_FW_MC_THR>) _param_vt_fw_mc_thr,
 					(ParamFloat<px4::params::FW_PSP_OFF>) _param_fw_psp_off
 				       )
