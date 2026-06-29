@@ -97,6 +97,24 @@ parameters:
       max: 1.0
       increment: 0.05
       decimal: 2
+    VT_FW_RDIFF:
+      description:
+        short: Lift-rotor DIFFERENTIAL roll authority in FW mode [0..1]
+        long: |-
+          When > 0 AND the lift rotors are running (VT_FW_MC_THR > 0), route the multicopter roll
+          torque to the lift-rotor DIFFERENTIAL so roll authority is AIRSPEED-INDEPENDENT. The FW
+          ailerons lose authority at low speed (dynamic pressure ~ V^2; e.g. 38 m/s is ~28 % of a
+          72 m/s cruise), so a low-speed descent (P9) can have a lightly-damped roll oscillation the
+          ailerons cannot suppress. The lift rotors, already spinning for descent support, can add the
+          missing roll moment. Gated by VT_FW_RDIFF itself (the mission sets it > 0 ONLY in the
+          low-speed descent) so it never leaks into the brake / cruise / turn. 0 = stock (FW ailerons
+          only). 1 = full MC roll torque on the rotors.
+      type: float
+      default: 0.0
+      min: 0.0
+      max: 1.0
+      increment: 0.05
+      decimal: 2
     VT_PSHER_SLEW:
       description:
         short: Pusher throttle ramp up slew rate

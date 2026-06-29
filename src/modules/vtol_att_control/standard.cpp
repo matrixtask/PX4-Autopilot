@@ -421,6 +421,16 @@ void Standard::fill_actuator_outputs()
 			_thrust_setpoint_0->xyz[2] = _vehicle_thrust_setpoint_virtual_mc->xyz[2] * ramp;
 		}
 
+		// [P9 LOW-SPEED ROLL AUTHORITY] The FW ailerons lose roll authority at low CAS (q ~ V^2; 38 m/s ~ 28 % of
+		// a 72 m/s cruise) -> a lightly-damped low-speed-descent roll oscillation the ailerons cannot suppress
+		// (yaw-damper and roll-rate-D gains were both shown ineffective there). When VT_FW_RDIFF > 0 AND the lift
+		// rotors are running (VT_FW_MC_THR > 0), route the MC roll torque to the lift-rotor DIFFERENTIAL for
+		// AIRSPEED-INDEPENDENT roll authority. Gated by VT_FW_RDIFF (mission sets it > 0 ONLY in the P9 low-speed
+		// descent) so it never leaks into the brake / cruise / turn. Overrides the (already faded to ~0) ramp roll.
+		if (_param_vt_fw_rdiff.get() > 0.01f && _param_vt_fw_mc_thr.get() > 0.01f) {
+			_torque_setpoint_0->xyz[0] = _vehicle_torque_setpoint_virtual_mc->xyz[0] * _param_vt_fw_rdiff.get();
+		}
+
 		// Mk-7 ROTOR-ASSISTED STEEP CLIMB: command all lift rotors at a uniform collective in FW so the
 		// rotors carry weight / add climb force (the design 1/4 climb is a low-speed rotor-borne climb; the
 		// forward-thrust-limited pusher alone can only hold ~1/6). Symmetric collective = pure upward body
