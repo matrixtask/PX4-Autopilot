@@ -508,29 +508,55 @@ float VtolType::pusher_assist()
 	// forward acceleration will be compensated by the pusher/tilt
 
 	if (pitch_setpoint < pitch_setpoint_min) {
-		// desired roll angle in heading frame stays the same
-		const float roll_new = -asinf(body_z_sp(1));
-
-		forward_thrust = (sinf(pitch_setpoint_min) - sinf(pitch_setpoint)) * _param_vt_fwd_thrust_sc.get();
+		// raw pusher-assist forward thrust demanded to keep the tilt clamped at pitch_setpoint_min
+		float forward_thrust_raw = (sinf(pitch_setpoint_min) - sinf(pitch_setpoint)) * _param_vt_fwd_thrust_sc.get();
 		// limit forward actuation to [0, 0.9]
-		forward_thrust = math::constrain(forward_thrust, 0.0f, 0.9f);
+		forward_thrust_raw = math::constrain(forward_thrust_raw, 0.0f, 0.9f);
 
-		// create corrected desired body z axis in heading frame
-		const Dcmf R_tmp = Eulerf(roll_new, pitch_setpoint_min, 0.0f);
-		Vector3f tilt_new(R_tmp(0, 2), R_tmp(1, 2), R_tmp(2, 2));
+		// Conditional pusher-assist deadzone with release hysteresis (teTra Mk-7). Below the
+		// threshold the pusher is gated to 0 and we leave the attitude setpoint untouched, so the
+		// multicopter provides the small forward acceleration with tilt instead of the pusher —
+		// removing the low-demand pusher-vs-tilt double-count seen in hover (pusher ~0.16 throttle
+		// while the body pitches back to cancel it). Above the threshold the pusher engages and the
+		// tilt is clamped to pitch_setpoint_min as in stock, so high-wind forward thrust is
+		// unaffected. VT_FWD_DZ == 0 => engages for any demand (behaviour identical to stock).
+		const float dz_on = _param_vt_fwd_dz.get();
+		const float dz_off = math::max(0.0f, dz_on - _param_vt_fwd_dz_hys.get());
 
-		// rotate the vector into a new frame which is rotated in z by the desired heading
-		// with respect to the earh frame.
-		const float yaw_error = wrap_pi(euler_sp(2) - euler(2));
-		const Dcmf R_yaw_correction = Eulerf(0.0f, 0.0f, -yaw_error);
-		tilt_new = R_yaw_correction * tilt_new;
+		if (_fwd_assist_active) {
+			_fwd_assist_active = (forward_thrust_raw > dz_off);
 
-		// now extract roll and pitch setpoints
-		const float pitch_body = atan2f(tilt_new(0), tilt_new(2));
-		const float roll_body = -asinf(tilt_new(1));
+		} else {
+			_fwd_assist_active = (forward_thrust_raw > dz_on);
+		}
 
-		const Quatf q_sp(Eulerf(roll_body, pitch_body, euler_sp(2)));
-		q_sp.copyTo(_v_att_sp->q_d);
+		if (_fwd_assist_active) {
+			// desired roll angle in heading frame stays the same
+			const float roll_new = -asinf(body_z_sp(1));
+
+			forward_thrust = forward_thrust_raw;
+
+			// create corrected desired body z axis in heading frame
+			const Dcmf R_tmp = Eulerf(roll_new, pitch_setpoint_min, 0.0f);
+			Vector3f tilt_new(R_tmp(0, 2), R_tmp(1, 2), R_tmp(2, 2));
+
+			// rotate the vector into a new frame which is rotated in z by the desired heading
+			// with respect to the earh frame.
+			const float yaw_error = wrap_pi(euler_sp(2) - euler(2));
+			const Dcmf R_yaw_correction = Eulerf(0.0f, 0.0f, -yaw_error);
+			tilt_new = R_yaw_correction * tilt_new;
+
+			// now extract roll and pitch setpoints
+			const float pitch_body = atan2f(tilt_new(0), tilt_new(2));
+			const float roll_body = -asinf(tilt_new(1));
+
+			const Quatf q_sp(Eulerf(roll_body, pitch_body, euler_sp(2)));
+			q_sp.copyTo(_v_att_sp->q_d);
+		}
+
+	} else {
+		// no forward-thrust demand: release the latch so re-entry uses the dz_on (engage) threshold
+		_fwd_assist_active = false;
 	}
 
 	return forward_thrust;

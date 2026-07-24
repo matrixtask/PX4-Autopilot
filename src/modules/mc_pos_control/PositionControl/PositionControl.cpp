@@ -46,11 +46,64 @@ using namespace matrix;
 
 const trajectory_setpoint_s PositionControl::empty_trajectory_setpoint = {0, {NAN, NAN, NAN}, {NAN, NAN, NAN}, {NAN, NAN, NAN}, {NAN, NAN, NAN}, NAN, NAN};
 
+namespace
+{
+// Apply per-axis body-frame gains to a horizontal NED vector.
+// Rotate v_ned into the body frame by -yaw, scale the fore-aft (body-x) component
+// by g_fa and the lateral (body-y) component by g_lat, then rotate back to NED.
+// Equivalent to R(yaw) * diag(g_fa, g_lat) * R(-yaw) * v_ned, i.e. a heading-
+// independent anisotropic gain. NaN components propagate through unchanged in
+// pairs (horizontal setpoints always come in x/y pairs, see _inputValid()).
+inline Vector2f applyBodyGainXY(const Vector2f &v_ned, const float g_fa, const float g_lat, const float yaw)
+{
+	const float c = cosf(yaw);
+	const float s = sinf(yaw);
+	// NED -> body (fore-aft = body-x, lateral = body-y)
+	const float fa  =  c * v_ned(0) + s * v_ned(1);
+	const float lat = -s * v_ned(0) + c * v_ned(1);
+	// scale in body frame
+	const float fa_g  = g_fa  * fa;
+	const float lat_g = g_lat * lat;
+	// body -> NED
+	return Vector2f(c * fa_g - s * lat_g, s * fa_g + c * lat_g);
+}
+
+// Error-norm nonlinear velocity-P multiplier: smoothstep from lo (at err=0) up to 1.0 (at err>=bp).
+// C1-continuous (zero slope at both ends) so the gain map never chatters. bp<=0 -> disabled (1.0).
+inline float velPSchedMult(const float err_abs, const float bp, const float lo)
+{
+	if (bp <= 0.f) {
+		return 1.f;
+	}
+
+	const float u = math::constrain(err_abs / bp, 0.f, 1.f);
+	const float ss = u * u * (3.f - 2.f * u); // smoothstep
+	return lo + (1.f - lo) * ss;
+}
+}
+
 void PositionControl::setVelocityGains(const Vector3f &P, const Vector3f &I, const Vector3f &D)
 {
 	_gain_vel_p = P;
 	_gain_vel_i = I;
 	_gain_vel_d = D;
+}
+
+void PositionControl::setAxisDecoupledGains(const bool enable, const float pos_p, const float vel_p,
+		const float vel_i, const float vel_d)
+{
+	_axis_decoupled = enable;
+	_gain_pos_p_fa = pos_p;
+	_gain_vel_p_fa = vel_p;
+	_gain_vel_i_fa = vel_i;
+	_gain_vel_d_fa = vel_d;
+}
+
+void PositionControl::setVelPSchedule(const float breakpoint, const float fa_lo, const float lat_lo)
+{
+	_vel_p_sched_bp = breakpoint;
+	_gain_vel_p_fa_lo = fa_lo;
+	_gain_vel_p_lat_lo = lat_lo;
 }
 
 void PositionControl::setVelocityLimits(const float vel_horizontal, const float vel_up, const float vel_down)
@@ -128,6 +181,13 @@ void PositionControl::_positionControl()
 {
 	// P-position controller
 	Vector3f vel_sp_position = (_pos_sp - _pos).emult(_gain_pos_p);
+
+	if (_axis_decoupled) {
+		// Replace the isotropic horizontal P with a body-frame anisotropic P
+		// (fore-aft vs lateral). Vertical (index 2) keeps the isotropic gain above.
+		vel_sp_position.xy() = applyBodyGainXY((_pos_sp - _pos).xy(), _gain_pos_p_fa, _gain_pos_p(1), _yaw);
+	}
+
 	// Position and feed-forward velocity setpoints or position states being NAN results in them not having an influence
 	ControlMath::addIfNotNanVector3f(_vel_sp, vel_sp_position);
 	// make sure there are no NAN elements for further reference while constraining
@@ -148,6 +208,33 @@ void PositionControl::_velocityControl(const float dt)
 	// PID velocity control
 	Vector3f vel_error = _vel_sp - _vel;
 	Vector3f acc_sp_velocity = vel_error.emult(_gain_vel_p) + _vel_int - _vel_dot.emult(_gain_vel_d);
+
+	if (_axis_decoupled) {
+		// Optional error-norm nonlinear velocity-P: soften the small-signal loop per body axis
+		// (scheduled on the body-frame position error magnitude) to suppress self-sustained hover
+		// oscillations, restoring nominal gain at/above the breakpoint for gust rejection.
+		float mult_fa = 1.f;
+		float mult_lat = 1.f;
+
+		if (_vel_p_sched_bp > 0.f && PX4_ISFINITE(_pos_sp(0)) && PX4_ISFINITE(_pos_sp(1))
+		    && PX4_ISFINITE(_pos(0)) && PX4_ISFINITE(_pos(1))) {
+			const float c = cosf(_yaw);
+			const float s = sinf(_yaw);
+			const float eN = _pos_sp(0) - _pos(0);
+			const float eE = _pos_sp(1) - _pos(1);
+			const float e_fa  =  c * eN + s * eE; // fore-aft (body-x) position error
+			const float e_lat = -s * eN + c * eE; // lateral (body-y) position error
+			mult_fa  = velPSchedMult(fabsf(e_fa),  _vel_p_sched_bp, _gain_vel_p_fa_lo);
+			mult_lat = velPSchedMult(fabsf(e_lat), _vel_p_sched_bp, _gain_vel_p_lat_lo);
+		}
+
+		// Body-frame anisotropic P and D on the horizontal plane; the integral is
+		// added in NED (its increment is rotated per-step below). Vertical unchanged.
+		const Vector2f p_xy = applyBodyGainXY(vel_error.xy(), _gain_vel_p_fa * mult_fa, _gain_vel_p(1) * mult_lat,
+						      _yaw);
+		const Vector2f d_xy = applyBodyGainXY(_vel_dot.xy(), _gain_vel_d_fa, _gain_vel_d(1), _yaw);
+		acc_sp_velocity.xy() = p_xy + Vector2f(_vel_int) - d_xy;
+	}
 
 	// No control input from setpoints or corresponding states which are NAN
 	ControlMath::addIfNotNanVector3f(_acc_sp, acc_sp_velocity);
@@ -200,8 +287,17 @@ void PositionControl::_velocityControl(const float dt)
 
 	// Make sure integral doesn't get NAN
 	ControlMath::setZeroIfNanVector3f(vel_error);
+
 	// Update integral part of velocity control
-	_vel_int += vel_error.emult(_gain_vel_i) * dt;
+	if (_axis_decoupled) {
+		// Accumulate the horizontal integral with the body-frame anisotropic gain,
+		// rotated back to NED each step (heading fixed in hover -> exact). Vertical unchanged.
+		_vel_int(2) += vel_error(2) * _gain_vel_i(2) * dt;
+		_vel_int.xy() += applyBodyGainXY(vel_error.xy(), _gain_vel_i_fa, _gain_vel_i(1), _yaw) * dt;
+
+	} else {
+		_vel_int += vel_error.emult(_gain_vel_i) * dt;
+	}
 }
 
 void PositionControl::_accelerationControl()

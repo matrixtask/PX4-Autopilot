@@ -94,6 +94,36 @@ public:
 	void setVelocityGains(const matrix::Vector3f &P, const matrix::Vector3f &I, const matrix::Vector3f &D);
 
 	/**
+	 * Set the body fore-aft (body-x) horizontal gains for axis-decoupled control.
+	 * When enabled, the horizontal position/velocity errors are rotated into the
+	 * body frame by -yaw; these gains apply to the fore-aft (body-x) component and
+	 * the isotropic MPC_XY_* gains apply to the lateral (body-y) component; the
+	 * result is rotated back to NED. This makes the split heading-independent and
+	 * captures the physical fore-aft/lateral asymmetry (Ixx!=Iyy, pusher-driven
+	 * fore-aft vs pure-roll lateral).
+	 * @param enable if false, behaviour is identical to the isotropic MPC_XY_* path
+	 * @param pos_p fore-aft position proportional gain
+	 * @param vel_p fore-aft velocity proportional gain
+	 * @param vel_i fore-aft velocity integral gain
+	 * @param vel_d fore-aft velocity derivative gain
+	 */
+	void setAxisDecoupledGains(bool enable, float pos_p, float vel_p, float vel_i, float vel_d);
+
+	/**
+	 * Set the error-norm nonlinear velocity-P schedule for the axis-decoupled path.
+	 * The per-axis body-frame position error magnitude is mapped through a C1-continuous
+	 * smoothstep from the low-error multiplier at zero error up to 1.0 (nominal) at the
+	 * breakpoint error. This softens the small-signal loop gain to suppress the self-sustained
+	 * hover oscillations (the ~6 s roll limit cycle and the slow fore-aft wander) while keeping
+	 * full gain for large-error gust rejection.
+	 * @param breakpoint position-error magnitude [m] at/above which the multiplier reaches 1.0;
+	 *                   <= 0 disables scheduling (fixed gains)
+	 * @param fa_lo fore-aft (body-x) velocity-P multiplier at zero error
+	 * @param lat_lo lateral (body-y) velocity-P multiplier at zero error
+	 */
+	void setVelPSchedule(float breakpoint, float fa_lo, float lat_lo);
+
+	/**
 	 * Set the maximum velocity to execute with feed forward and position control
 	 * @param vel_horizontal horizontal velocity limit
 	 * @param vel_up upwards velocity limit
@@ -206,6 +236,26 @@ private:
 	matrix::Vector3f _gain_vel_p; ///< Velocity control proportional gain
 	matrix::Vector3f _gain_vel_i; ///< Velocity control integral gain
 	matrix::Vector3f _gain_vel_d; ///< Velocity control derivative gain
+
+	// Body fore-aft (body-x) horizontal gains for axis-decoupled control.
+	// When _axis_decoupled is false, the isotropic MPC_XY_* Vector3f gains above
+	// are used unchanged (stock behaviour). When true, the horizontal errors are
+	// rotated into the body frame, these fore-aft scalars apply to body-x and the
+	// isotropic gains (index 1) apply to body-y (lateral), then rotated back to NED.
+	bool _axis_decoupled{false};
+	float _gain_pos_p_fa{}; ///< Position P, body fore-aft
+	float _gain_vel_p_fa{}; ///< Velocity P, body fore-aft
+	float _gain_vel_i_fa{}; ///< Velocity I, body fore-aft
+	float _gain_vel_d_fa{}; ///< Velocity D, body fore-aft
+
+	// Error-norm nonlinear velocity-P schedule (only on the axis-decoupled path).
+	// _vel_p_sched_bp <= 0 disables it (fixed velocity-P). Otherwise the per-axis body-frame
+	// position error magnitude smoothsteps the velocity-P multiplier from the low-error value
+	// up to 1.0 at the breakpoint, softening the small-signal loop to suppress self-sustained
+	// hover oscillations without weakening large-error gust rejection.
+	float _vel_p_sched_bp{0.f};    ///< breakpoint position error [m]; <=0 -> disabled
+	float _gain_vel_p_fa_lo{1.f};  ///< fore-aft velocity-P multiplier at zero error
+	float _gain_vel_p_lat_lo{1.f}; ///< lateral velocity-P multiplier at zero error
 
 	// Limits
 	float _lim_vel_horizontal{}; ///< Horizontal velocity limit with feed forward and position control

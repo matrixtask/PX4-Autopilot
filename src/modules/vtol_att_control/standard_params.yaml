@@ -35,6 +35,37 @@ parameters:
       max: 5.0
       increment: 0.01
       decimal: 2
+    VT_FWD_DZ:
+      description:
+        short: Pusher-assist forward-thrust deadzone (teTra Mk-7)
+        long: |-
+          Deadzone on the pusher-assist forward-thrust command (normalized throttle, after
+          VT_FWD_THRUST_SC and the [0,0.9] clamp). While the demanded forward thrust is below
+          this threshold the pusher is held at 0 and the multicopter handles the small forward
+          acceleration with tilt instead. This removes the low-demand pusher-vs-tilt double-count
+          (in hover the pusher would otherwise run ~0.16 throttle while the body pitches back to
+          cancel it). Above the threshold the pusher engages normally, so high-wind forward thrust
+          (e.g. 30 m/s, ~0.5 throttle) is unaffected. Set to 0 to disable (identical to stock).
+      type: float
+      default: 0.0
+      min: 0.0
+      max: 0.9
+      increment: 0.01
+      decimal: 2
+    VT_FWD_DZ_HYS:
+      description:
+        short: Pusher-assist deadzone release hysteresis (teTra Mk-7)
+        long: |-
+          Hysteresis width for the VT_FWD_DZ deadzone. Once engaged, the pusher stays engaged until
+          the demanded forward thrust drops below (VT_FWD_DZ - VT_FWD_DZ_HYS); once disengaged it stays
+          off until the demand exceeds VT_FWD_DZ. Prevents on/off chattering at the threshold. Only
+          used when VT_FWD_DZ > 0.
+      type: float
+      default: 0.0
+      min: 0.0
+      max: 0.5
+      increment: 0.01
+      decimal: 2
     VT_B_TRANS_RAMP:
       description:
         short: Back transition MC motor ramp up time

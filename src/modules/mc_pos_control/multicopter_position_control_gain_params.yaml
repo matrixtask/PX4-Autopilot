@@ -84,3 +84,108 @@ parameters:
       max: 2
       decimal: 2
       increment: 0.02
+    MPC_FA_P:
+      description:
+        short: Body fore-aft (body-x) position P override
+        long: |-
+          Axis-decoupled horizontal position proportional gain for the body
+          fore-aft (body-x) axis. The horizontal position error is rotated into
+          the body frame by -yaw, this gain is applied to the fore-aft component
+          (MPC_XY_P to the lateral component), then rotated back to NED. This
+          captures fore-aft/lateral asymmetry (Ixx!=Iyy, pusher vs pure-roll)
+          independent of heading. Set to -1 to inherit MPC_XY_P (isotropic,
+          identical to stock behaviour).
+      type: float
+      default: -1.0
+      min: -1
+      max: 2
+      decimal: 2
+      increment: 0.1
+    MPC_FA_VP_ACC:
+      description:
+        short: Body fore-aft (body-x) velocity P override
+        long: |-
+          Axis-decoupled horizontal velocity proportional gain for the body
+          fore-aft (body-x) axis. Applied to the fore-aft component of the
+          body-frame velocity error (MPC_XY_VEL_P_ACC to the lateral component).
+          Set to -1 to inherit MPC_XY_VEL_P_ACC (isotropic).
+      type: float
+      default: -1.0
+      min: -1
+      max: 5
+      decimal: 2
+      increment: 0.1
+    MPC_FA_VI_ACC:
+      description:
+        short: Body fore-aft (body-x) velocity I override
+        long: |-
+          Axis-decoupled horizontal velocity integral gain for the body fore-aft
+          (body-x) axis. Set to -1 to inherit MPC_XY_VEL_I_ACC (isotropic).
+      type: float
+      default: -1.0
+      min: -1
+      max: 60
+      decimal: 2
+      increment: 0.02
+    MPC_FA_VD_ACC:
+      description:
+        short: Body fore-aft (body-x) velocity D override
+        long: |-
+          Axis-decoupled horizontal velocity derivative gain for the body
+          fore-aft (body-x) axis. Set to -1 to inherit MPC_XY_VEL_D_ACC
+          (isotropic).
+      type: float
+      default: -1.0
+      min: -1
+      max: 2
+      decimal: 2
+      increment: 0.02
+    MPC_VSCH_BP:
+      description:
+        short: Nonlinear velocity-P schedule breakpoint (body axis-decoupled)
+        long: |-
+          Error-norm gain scheduling for the axis-decoupled horizontal velocity-P
+          (nonlinear P). The per-axis body-frame position error magnitude is mapped
+          through a smoothstep from the low-error multiplier (MPC_FA_VP_LO /
+          MPC_LAT_VP_LO) at zero error up to 1.0 (nominal gain) at this breakpoint
+          error and beyond. Softening the small-signal loop gain suppresses the
+          self-sustained hover oscillations (the ~6 s roll limit cycle and the slow
+          fore-aft wander) without weakening large-error gust rejection. The map is
+          C1-continuous (zero slope at both ends) so there is no chattering. Only
+          active on the axis-decoupled path (a fore-aft override set). Set to 0 to
+          disable scheduling (fixed gains, identical to the pre-schedule behaviour).
+      type: float
+      default: 0.0
+      min: 0.0
+      max: 3.0
+      unit: m
+      decimal: 2
+      increment: 0.05
+    MPC_FA_VP_LO:
+      description:
+        short: Fore-aft velocity-P low-error multiplier (nonlinear P)
+        long: |-
+          Multiplier applied to the body fore-aft (body-x) velocity-P gain at zero
+          position error, ramping smoothly to 1.0 at MPC_VSCH_BP. Below 1.0 softens
+          the small-signal fore-aft loop to suppress the slow calm N wander. 1.0 =
+          no softening. Only used when MPC_VSCH_BP > 0.
+      type: float
+      default: 1.0
+      min: 0.2
+      max: 1.0
+      decimal: 2
+      increment: 0.05
+    MPC_LAT_VP_LO:
+      description:
+        short: Lateral velocity-P low-error multiplier (nonlinear P)
+        long: |-
+          Multiplier applied to the body lateral (body-y) velocity-P gain at zero
+          position error, ramping smoothly to 1.0 at MPC_VSCH_BP. Below 1.0 softens
+          the small-signal lateral loop to suppress the self-sustained ~6 s roll
+          limit cycle. 1.0 = no softening. Only used when MPC_VSCH_BP > 0.
+      type: float
+      default: 1.0
+      min: 0.2
+      max: 1.0
+      decimal: 2
+      increment: 0.05

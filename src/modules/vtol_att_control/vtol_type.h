@@ -326,6 +326,12 @@ protected:
 
 	int _altitude_reset_counter{0};
 
+	// Conditional pusher-assist deadzone (teTra Mk-7): latch state for the engage/disengage
+	// hysteresis so the pusher stays OFF in the low forward-demand (hover) regime — removing
+	// the pusher-vs-tilt double-count — yet engages above threshold where the pusher is
+	// essential (e.g. 30 m/s wind). false => currently in the deadzone (pusher gated to 0).
+	bool _fwd_assist_active{false};
+
 	DEFINE_PARAMETERS_CUSTOM_PARENT(ModuleParams,
 					(ParamBool<px4::params::VT_ELEV_MC_LOCK>) _param_vt_elev_mc_lock,
 					(ParamFloat<px4::params::VT_FW_MIN_ALT>) _param_vt_fw_min_alt,
@@ -354,6 +360,8 @@ protected:
 					(ParamFloat<px4::params::VT_PITCH_MIN>) _param_vt_pitch_min,
 					(ParamFloat<px4::params::VT_FWD_THRUST_SC>) _param_vt_fwd_thrust_sc,
 					(ParamInt<px4::params::VT_FWD_THRUST_EN>) _param_vt_fwd_thrust_en,
+					(ParamFloat<px4::params::VT_FWD_DZ>) _param_vt_fwd_dz,
+					(ParamFloat<px4::params::VT_FWD_DZ_HYS>) _param_vt_fwd_dz_hys,
 					(ParamFloat<px4::params::MPC_LAND_ALT1>) _param_mpc_land_alt1,
 					(ParamFloat<px4::params::MPC_LAND_ALT2>) _param_mpc_land_alt2,
 					(ParamFloat<px4::params::VT_LND_PITCH_MIN>) _param_vt_lnd_pitch_min,

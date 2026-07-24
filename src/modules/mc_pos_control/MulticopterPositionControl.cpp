@@ -200,6 +200,21 @@ void MulticopterPositionControl::parameters_update(bool force)
 			Vector3f(_param_mpc_xy_vel_p_acc.get(), _param_mpc_xy_vel_p_acc.get(), _param_mpc_z_vel_p_acc.get()),
 			Vector3f(_param_mpc_xy_vel_i_acc.get(), _param_mpc_xy_vel_i_acc.get(), _param_mpc_z_vel_i_acc.get()),
 			Vector3f(_param_mpc_xy_vel_d_acc.get(), _param_mpc_xy_vel_d_acc.get(), _param_mpc_z_vel_d_acc.get()));
+
+		// Axis-decoupled (body fore-aft vs lateral) horizontal gains. A fore-aft
+		// param of -1 inherits the isotropic MPC_XY_* value; decoupling is enabled
+		// only if at least one fore-aft override is set (>= 0), otherwise behaviour
+		// is identical to stock isotropic control.
+		const bool fa_enable = (_param_mpc_fa_p.get() >= 0.f) || (_param_mpc_fa_vp_acc.get() >= 0.f)
+				       || (_param_mpc_fa_vi_acc.get() >= 0.f) || (_param_mpc_fa_vd_acc.get() >= 0.f);
+		_control.setAxisDecoupledGains(fa_enable,
+					       (_param_mpc_fa_p.get()      >= 0.f) ? _param_mpc_fa_p.get()      : _param_mpc_xy_p.get(),
+					       (_param_mpc_fa_vp_acc.get() >= 0.f) ? _param_mpc_fa_vp_acc.get() : _param_mpc_xy_vel_p_acc.get(),
+					       (_param_mpc_fa_vi_acc.get() >= 0.f) ? _param_mpc_fa_vi_acc.get() : _param_mpc_xy_vel_i_acc.get(),
+					       (_param_mpc_fa_vd_acc.get() >= 0.f) ? _param_mpc_fa_vd_acc.get() : _param_mpc_xy_vel_d_acc.get());
+		// Error-norm nonlinear velocity-P schedule (soften small-signal loop to kill self-sustained
+		// hover oscillations). Breakpoint 0 disables it (fixed gains, backward compatible).
+		_control.setVelPSchedule(_param_mpc_vsch_bp.get(), _param_mpc_fa_vp_lo.get(), _param_mpc_lat_vp_lo.get());
 		_control.setHorizontalThrustMargin(_param_mpc_thr_xy_marg.get());
 		_control.decoupleHorizontalAndVecticalAcceleration(_param_mpc_acc_decouple.get());
 		_goto_control.setParamMpcAccHor(_param_mpc_acc_hor.get());
