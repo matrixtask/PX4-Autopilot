@@ -280,7 +280,9 @@ param set-default MC_YAW_WEIGHT 0.3
 param set-default MC_ROLLRATE_P 0.14
 param set-default MC_PITCHRATE_P 0.14
 param set-default MC_YAWRATE_P 0.35
-param set-default MC_ROLLRATE_I 0.03
+# Choshi hover tune: lower roll-rate integral to halve the ~6 s roll self-excited limit cycle
+# (30 m/s DATCOM, 900 s: 6 s roll-rate 0.19 -> 0.12 dps, smaller roll steady bias, position kept within +-2 m).
+param set-default MC_ROLLRATE_I 0.015
 param set-default MC_PITCHRATE_I 0.03
 param set-default MC_YAWRATE_I 0.002
 param set-default MC_ROLLRATE_D 0.004
