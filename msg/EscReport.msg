@@ -12,7 +12,7 @@ uint8 esc_state # [-] State of ESC - depend on Vendor
 uint8 actuator_function # [-] Actuator output function (one of Motor1...MotorN)
 
 uint8 ACTUATOR_FUNCTION_MOTOR1 = 101
-uint8 ACTUATOR_FUNCTION_MOTOR_MAX = 112 # output_functions.yaml Motor.start + Motor.count - 1
+uint8 ACTUATOR_FUNCTION_MOTOR_MAX = 116 # output_functions.yaml Motor.start + Motor.count - 1
 
 uint16 failures # [@enum FAILURE] Bitmask to indicate the internal ESC faults
 int8 esc_power # [%] [@range 0,100] Applied power (negative values reserved)

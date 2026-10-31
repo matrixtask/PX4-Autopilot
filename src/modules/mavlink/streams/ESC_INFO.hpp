@@ -60,7 +60,7 @@ private:
 
 	uORB::SubscriptionMultiArray<esc_status_s> _esc_status_subs{ORB_ID::esc_status};
 
-	static constexpr uint8_t MAX_ESC_OUTPUTS = 12; // See output_functions.hpp
+	static constexpr uint8_t MAX_ESC_OUTPUTS = 16; // = output_functions.yaml Motor.count (Mk-7: 13 motors)
 	static constexpr uint8_t ESCS_PER_MSG = MAVLINK_MSG_ESC_INFO_FIELD_TEMPERATURE_LEN;
 	static constexpr uint8_t MAX_NUM_MSGS = MAX_ESC_OUTPUTS / ESCS_PER_MSG;
 
