@@ -116,10 +116,8 @@ void ActuatorEffectivenessStandardVTOL::setFlightPhase(const FlightPhase &flight
 	// update stopped motors
 	switch (flight_phase) {
 	case FlightPhase::FORWARD_FLIGHT:
-		// Mk-7 smooth handoff: do NOT hard-stop the upwards (lift) motors at FW entry. standard.cpp ramps
-		// their thrust/attitude contribution to 0 over ~2 s so roll authority transfers gradually to the
-		// ailerons (the abrupt stop caused a roll-over). The motors then idle at min in FW.
-		// _stopped_motors_mask |= _upwards_motors_mask;
+		// Lift motors are not stopped at FW entry; standard.cpp fades them over ~2 s (abrupt stop rolled the
+		// Mk-7 over, N4). Note: Mk-7 rotors are tilted 8 deg (|axis.y| > 0.1) so _upwards_motors_mask is 0 anyway.
 		break;
 
 	case FlightPhase::HOVER_FLIGHT:

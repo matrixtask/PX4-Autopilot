@@ -195,7 +195,6 @@ private:
 	float _rsnap_out{0.f};
 	float _rsnap_x0{0.f};
 	float _rsnap_elapsed{0.f};
-	float _rsnap_shape_t{0.f};   // [exit-only] shape time locked at ramp start (longer for the roll-OUT)
 	bool _rsnap_ramping{false};
 	float _yaw{0.f};
 	struct lateral_control_state {

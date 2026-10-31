@@ -289,16 +289,8 @@ void Standard::update_transition_state()
 
 			// blend roll setpoint between FW and MC
 			const float roll_body_fw = Eulerf(Quatf(_fw_virtual_att_sp->q_d)).phi();
-			// [BETA-KICK] A SLOW P9 roll-out (hold the +15 bank, level gradually) was TESTED to kill the adverse-
-			// sideslip beta kick -> it made it WORSE (spike -71, beta 14.9): holding the bank longer through the
-			// decel builds MORE sideslip. The fast mc_weight blend is the lesser evil. Reverted.
-			// [P10-ENTRY-COORD TESTED, REVERTED to stock] The entry sideslip beta ~14 deg [the body yaw drifts
-			// 268->278 off the ground track during the back-trans] drives the entry roll transient. TWO C++ fixes
-			// were tried and did NOT reduce it: (1) yaw=ground-course override -> WORSE [the body yaw drifts
-			// regardless -> a 14 deg yaw error the controller fought via roll -> flaperon saturated, roll-osc 3.2];
-			// (2) scaling the FW roll-setpoint *0.35 -> beta unchanged [14.7], a +22 deg roll spike. The beta is a
-			// deep back-trans dynamic [MC velocity-correction yaw + decel coupling], not a yaw-setpoint or FW-bank
-			// effect. STOCK blend kept. Steady descent beta=0 via the OFFBOARD yaw=course [python p10diag].
+			// Stock mc_weight roll blend kept: slower roll-out and yaw/roll overrides were tested and worsened the
+			// back-transition sideslip transient (Mk-7 design notes N1).
 			roll_body = mc_weight * roll_body + (1.0f - mc_weight) * roll_body_fw;
 		}
 
@@ -306,10 +298,8 @@ void Standard::update_transition_state()
 
 		q_sp.copyTo(_v_att_sp->q_d);
 
-		// [DUTCH-ROLL] The pusher MUST be cut immediately here. A P9 rampdown was TESTED and is CATASTROPHIC:
-		// keeping the pusher running through the high-AoA back-trans pitch-up makes the prop NORMAL FORCE (P-factor)
-		// generate a LARGE yaw moment (yaw rate +1.9->-2.4 became +28 deg/s) -> Dutch roll amplified -> tumble to
-		// -177 deg / 45 m/s crash. The instant cut REMOVES that prop-at-AoA yaw source and is the correct behavior.
+		// Cut the pusher at once: a ramp-down kept prop normal force at high AoA -> yaw/Dutch-roll divergence
+		// in SITL (Mk-7 design notes N2). Safety-relevant, do not ramp.
 		_pusher_throttle = 0.0f;
 	}
 
@@ -391,10 +381,7 @@ void Standard::fill_actuator_outputs()
 		_thrust_setpoint_0->xyz[2] = _vehicle_thrust_setpoint_virtual_mc->xyz[2] * _mc_throttle_weight;
 
 		// FW actuators
-		// [STEP1 RESULT] Pure-MC roll in the back-trans (FW roll zeroed) was TESTED -> roll spike got WORSE
-		// (-72 vs -40): the lift rotors alone (5% thrust at 70 m/s) cannot control the Cl_beta Dutch roll; the
-		// FW ailerons are ESSENTIAL and already saturated. So the spike is a real airframe mode, NOT a blend
-		// artifact, and the FW+MC blend is optimal. Reverted to full FW roll.
+		// Full FW roll kept during back transition: the lift rotors alone cannot damp the Dutch roll (N3).
 		_torque_setpoint_1->xyz[0] = _vehicle_torque_setpoint_virtual_fw->xyz[0];
 		_torque_setpoint_1->xyz[1] = _vehicle_torque_setpoint_virtual_fw->xyz[1];
 		_torque_setpoint_1->xyz[2] = _vehicle_torque_setpoint_virtual_fw->xyz[2];

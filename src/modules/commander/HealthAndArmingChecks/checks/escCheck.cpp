@@ -33,7 +33,7 @@
 #include "escCheck.hpp"
 #include <px4_platform_common/events.h>
 #include <uORB/topics/actuator_motors.h>
-#include <uORB/topics/esc_status.h>   // ← 追加
+#include <uORB/topics/esc_status.h>
 
 using namespace time_literals;
 
