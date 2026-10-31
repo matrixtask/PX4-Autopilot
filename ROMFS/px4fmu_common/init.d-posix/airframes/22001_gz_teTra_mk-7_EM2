@@ -204,7 +204,13 @@ param set-default SIM_GZ_EC_MAX13   251.327
 # Initial multicopter vertical tuning for the 1560 kg Mk-7 model.
 # The 12 lift rotors provide about 27.4 kN vertical thrust at max speed,
 # so hover is near sqrt(W / Tmax) = 0.70-0.75 in the Gazebo speed-command model.
-param set-default MPC_THR_HOVER 0.70
+# Gazebo MulticopterMotorModel (velocity): thrust = k*omega^2 with omega linear in the command, i.e. quadratic
+# thrust. THR_MDL_FAC was the default 0 (linear) -> hover cmd 0.70 was really 49 % thrust, and the transition
+# lift-handoff floor delivered only (cmd)^2 of the intended rotor lift (sink before/after FW entry, runs 2-5).
+# Real rotors are also ~quadratic. MC rate P/D scaled x1.4 (= d thrust/d cmd at hover, 2*0.70) to keep the
+# loop gain that was tuned with the linear model.
+param set-default THR_MDL_FAC 1.0
+param set-default MPC_THR_HOVER 0.49
 param set-default MPC_THR_MIN 0.05
 param set-default MPC_THR_XY_MARG 0.08
 param set-default MPC_TKO_SPEED 1.0
@@ -277,14 +283,14 @@ param set-default MC_ROLL_P 0.6
 param set-default MC_PITCH_P 0.45
 param set-default MC_YAW_P 0.25
 param set-default MC_YAW_WEIGHT 0.3
-param set-default MC_ROLLRATE_P 0.25
-param set-default MC_PITCHRATE_P 0.25
-param set-default MC_YAWRATE_P 0.35
+param set-default MC_ROLLRATE_P 0.35
+param set-default MC_PITCHRATE_P 0.35
+param set-default MC_YAWRATE_P 0.49
 param set-default MC_ROLLRATE_I 0.03
 param set-default MC_PITCHRATE_I 0.03
 param set-default MC_YAWRATE_I 0.002
-param set-default MC_ROLLRATE_D 0.025
-param set-default MC_PITCHRATE_D 0.025
+param set-default MC_ROLLRATE_D 0.035
+param set-default MC_PITCHRATE_D 0.035
 param set-default MC_YAWRATE_D 0.004
 param set-default MC_ROLLRATE_K 1.0
 param set-default MC_PITCHRATE_K 1.0
@@ -352,7 +358,7 @@ param set-default MIS_DIST_1WP 0
 # Without it the 2nd WK01 run sank 20 m during the 33->46 m/s blend and quad-chuted. THR 1.0 = value adopted
 # in the mk7 study (0.70 left only 41 % rotor support at FW entry -> 9 m/s sink in the 3rd run).
 param set-default VT_LIFT_HND_V 72
-param set-default VT_LIFT_HND_THR 1.0
+param set-default VT_LIFT_HND_THR 0.49
 # Transition altitude-loss abort = EM3 requirement (+-15 m around the target altitude during transitions).
 param set-default VT_QC_T_ALT_LOSS 15
 param set-default RTL_TYPE 3
