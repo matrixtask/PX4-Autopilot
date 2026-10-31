@@ -327,10 +327,11 @@ param set-default VT_F_TRANS_DUR 15
 param set-default VT_F_TR_OL_TM 50
 param set-default VT_TRANS_TIMEOUT 70
 param set-default VT_TRANS_MIN_TM 4
-# Design values (Mk-7 handoff 3.1): blend from 33 m/s (= 152 m gate speed), transition complete at 46 m/s,
-# i.e. above the clean stall of 37 m/s. Previous 28/33 completed the transition below stall.
+# Blend from 33 m/s (handoff 3.1, 152 m gate speed); transition complete at 50 m/s = 1.3 x clean stall
+# (CLmax 1.4, Veronte/EM3 analysis 2026-11-01). Handoff value 46 m/s (1.24 Vs) left no margin for the
+# first FW turn (SITL run 4). Previous 28/33 completed the transition below the 37 m/s stall.
 param set-default VT_ARSP_BLEND 33
-param set-default VT_ARSP_TRANS 46
+param set-default VT_ARSP_TRANS 50
 param set-default VT_B_TRANS_DUR 25
 param set-default VT_TYPE 2
 
