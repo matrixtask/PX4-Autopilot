@@ -23,6 +23,15 @@ param set-default ASPD_PRIMARY 1
 param set-default ASPD_DO_CHECKS 0
 param set-default ASPD_FALLBACK 1
 
+# Height reference = baro, GNSS altitude not fused (SITL only).
+# The gz world is flat but the gz NavSat sensor reports WGS84 altitude, which rises by d^2/2R with
+# distance d from the world origin (+236 m at 55 km). With the default GNSS height reference the
+# WK01 run flew into the ground at 54.8 km while the EKF read 236 m (see mk7_mission CHANGELOG §7).
+# gz NavSat velocity is the flat local velocity, so lat/lon + 3D velocity stay fused.
+# Real aircraft: keep the defaults (EKF2_HGT_REF 1, EKF2_GPS_CTRL 7).
+param set-default EKF2_HGT_REF 0
+param set-default EKF2_GPS_CTRL 5
+
 # TODO: Enable motor failure detection when the
 # VTOL no longer reports 0A for all ESCs in SITL
 param set-default FD_ACT_EN 0
