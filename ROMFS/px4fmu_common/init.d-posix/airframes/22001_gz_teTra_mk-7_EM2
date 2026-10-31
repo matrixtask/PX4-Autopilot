@@ -203,14 +203,14 @@ param set-default SIM_GZ_EC_MAX13   251.327
 
 # Initial multicopter vertical tuning for the 1560 kg Mk-7 model.
 # The 12 lift rotors provide about 27.4 kN vertical thrust at max speed,
-# so hover is near sqrt(W / Tmax) = 0.75 in the Gazebo speed-command model.
+# so hover is near sqrt(W / Tmax) = 0.70-0.75 in the Gazebo speed-command model.
 param set-default MPC_THR_HOVER 0.70
 param set-default MPC_THR_MIN 0.05
 param set-default MPC_THR_XY_MARG 0.08
 param set-default MPC_TKO_SPEED 1.0
 param set-default MPC_TKO_RAMP_T 4.0
 param set-default MPC_LAND_SPEED 0.6
-param set-default MPC_Z_VEL_MAX_DN 1.0
+param set-default MPC_Z_VEL_MAX_DN 1.5
 param set-default MPC_Z_VEL_MAX_UP 2.0
 param set-default NAV_ACC_RAD 2
 param set-default NAV_DLL_ACT 2
@@ -263,12 +263,12 @@ param set-default FW_PR_P 0.9
 param set-default FW_PSP_OFF 2
 param set-default FW_P_LIM_MIN -15
 param set-default FW_RR_FF 0.1
-param set-default FW_RR_P 0.3
-param set-default FW_THR_TRIM 0.25
-param set-default FW_THR_MAX 0.6
+param set-default FW_RR_P 1.0
+param set-default FW_THR_TRIM 0.70
+param set-default FW_THR_MAX 1.0
 param set-default FW_THR_MIN 0.05
-param set-default FW_T_CLMB_MAX 8
-param set-default FW_T_SINK_MAX 2.7
+param set-default FW_T_CLMB_MAX 5
+param set-default FW_T_SINK_MAX 3
 param set-default FW_T_SINK_MIN 2.2
 
 # Multicopter control parameters
@@ -277,14 +277,14 @@ param set-default MC_ROLL_P 0.6
 param set-default MC_PITCH_P 0.45
 param set-default MC_YAW_P 0.25
 param set-default MC_YAW_WEIGHT 0.3
-param set-default MC_ROLLRATE_P 0.14
-param set-default MC_PITCHRATE_P 0.14
+param set-default MC_ROLLRATE_P 0.25
+param set-default MC_PITCHRATE_P 0.25
 param set-default MC_YAWRATE_P 0.35
 param set-default MC_ROLLRATE_I 0.03
 param set-default MC_PITCHRATE_I 0.03
 param set-default MC_YAWRATE_I 0.002
-param set-default MC_ROLLRATE_D 0.004
-param set-default MC_PITCHRATE_D 0.004
+param set-default MC_ROLLRATE_D 0.025
+param set-default MC_PITCHRATE_D 0.025
 param set-default MC_YAWRATE_D 0.004
 param set-default MC_ROLLRATE_K 1.0
 param set-default MC_PITCHRATE_K 1.0
@@ -292,7 +292,7 @@ param set-default MC_YAWRATE_K 1.0
 param set-default MC_YAWRATE_MAX 15
 
 # Mission and position control
-param set-default MIS_TAKEOFF_ALT 3
+param set-default MIS_TAKEOFF_ALT 30
 param set-default MPC_YAW_MODE 4
 param set-default MPC_YAWRAUTO_MAX 15
 param set-default MPC_YAWRAUTO_ACC 5
@@ -300,8 +300,8 @@ param set-default WV_EN 0
 param set-default MPC_TILTMAX_AIR 16
 param set-default MPC_TILTMAX_LND 5
 param set-default MPC_XY_P 0.25
-param set-default MPC_XY_CRUISE 1.0
-param set-default MPC_XY_VEL_MAX 1.2
+param set-default MPC_XY_CRUISE 10.0
+param set-default MPC_XY_VEL_MAX 12.0
 param set-default MPC_XY_VEL_P_ACC 0.75
 param set-default MPC_XY_VEL_I_ACC 0.055
 param set-default MPC_XY_VEL_D_ACC 0.42
@@ -316,25 +316,43 @@ param set-default VT_PITCH_MIN -5
 # v7-fw: source-grounded transition tuning. ROOT CAUSE was VT_F_TR_OL_TM (default 6 s): the early
 # quadchute (vtol_type.cpp:332) cancels the transition if airspeed < VT_ARSP_BLEND after this time, and the
 # heavy Mk-7 can't reach a high blend airspeed in 6 s -> always quadchuted. Fix: long OL_TM + reachable
-# blend/trans airspeeds + flaps deployed (lower stall ~37->32 m/s) so the sub-30 handoff is survivable.
+# blend/trans airspeeds. Blend/trans = design 33/46 m/s (clean stall 37 m/s, handoff 3.1).
 # gentle pusher onset (slew 0.1 = ~8 s ramp) + moderate throttle 0.8 -> accelerate without the abrupt
 # nose/roll upset that THR=1.0 caused at the transition start (the divergence was at ~8 m/s, full rotors).
 param set-default VT_F_TRANS_THR 0.8
 param set-default VT_PSHER_SLEW 0.1
 param set-default VT_F_TRANS_DUR 15
-param set-default VT_F_TR_OL_TM 30
-param set-default VT_TRANS_TIMEOUT 30
+# 2026-11-01: pusher 0.8 accelerates at ~1.1 m/s^2 in SITL -> ~42 s to VT_ARSP_TRANS 46 m/s.
+# The 30 s timeout quad-chuted at 27 m/s in the first WK01 run -> 30->50 s / 30->70 s.
+param set-default VT_F_TR_OL_TM 50
+param set-default VT_TRANS_TIMEOUT 70
 param set-default VT_TRANS_MIN_TM 4
-# keep lift rotors (attitude authority) until 28 m/s, then a TIGHT blend to 33 (above flapped stall ~28-32,
-# where surfaces have enough q) -> bridges the transition valley in both lift AND roll authority.
-param set-default VT_ARSP_BLEND 28
-param set-default VT_ARSP_TRANS 33
-param set-default VT_B_TRANS_DUR 10
-# v7-fw recommendation #1: lift-rotor DIFFERENTIAL THRUST in FW (bitmask 7 = yaw+roll+pitch) keeps the
-# rotors available for attitude authority through/after the transition -> bridges the low-q roll-authority
-# gap that caused the hand-off roll-over, WITHOUT enlarging the (servo-feasible) ailerons. Reversible.
-param set-default VT_FW_DIFTHR_EN 7
-param set-default VT_FW_DIFTHR_S_R 2.0
-param set-default VT_FW_DIFTHR_S_P 1.5
-param set-default VT_FW_DIFTHR_S_Y 1.0
+# Design values (Mk-7 handoff 3.1): blend from 33 m/s (= 152 m gate speed), transition complete at 46 m/s,
+# i.e. above the clean stall of 37 m/s. Previous 28/33 completed the transition below stall.
+param set-default VT_ARSP_BLEND 33
+param set-default VT_ARSP_TRANS 46
+param set-default VT_B_TRANS_DUR 25
 param set-default VT_TYPE 2
+
+# ============================================
+# Mission envelope (design values; previously injected at runtime by tetra_mk7_profile_smooth.py)
+# ============================================
+# Airspeeds [m/s]: clean stall 37 (DRO 72.5 KCAS), cruise 72 (140 kt), VNE 82 (160 kt).
+param set-default FW_AIRSPD_STALL 37
+param set-default FW_AIRSPD_MIN 42
+param set-default FW_AIRSPD_TRIM 60
+param set-default FW_AIRSPD_MAX 80
+param set-default FW_R_LIM 15
+param set-default FW_YD_GAIN 5.0
+param set-default VT_B_DEC_MSS 1.5
+param set-default MIS_DIST_1WP 0
+# Wing->rotor lift handoff (firmware feature from mk7 study, previously enabled only at runtime by the
+# offboard script). Rotors carry the wing's lift deficit, floor = 1-(CAS/72)^2: 0.68 of hover at 41 m/s.
+# Without it the 2nd WK01 run sank 20 m during the 33->46 m/s blend and quad-chuted. THR 1.0 = value adopted
+# in the mk7 study (0.70 left only 41 % rotor support at FW entry -> 9 m/s sink in the 3rd run).
+param set-default VT_LIFT_HND_V 72
+param set-default VT_LIFT_HND_THR 1.0
+# Transition altitude-loss abort = EM3 requirement (+-15 m around the target altitude during transitions).
+param set-default VT_QC_T_ALT_LOSS 15
+param set-default RTL_TYPE 3
+

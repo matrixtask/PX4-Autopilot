@@ -329,7 +329,7 @@ parameters:
       type: float
       default: 0.0
       min: 0.0
-      max: 2.0
+      max: 10.0
       decimal: 3
       increment: 0.01
     FW_YD_TAU:
