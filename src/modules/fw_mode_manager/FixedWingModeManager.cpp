@@ -603,6 +603,7 @@ FixedWingModeManager::control_auto(const float control_interval, const Vector2d 
 
 	case position_setpoint_s::SETPOINT_TYPE_POSITION:
 		control_auto_position(control_interval, curr_pos, ground_speed, pos_sp_prev, current_sp);
+		_spoilers_setpoint = math::max(_spoilers_setpoint, descentSpoilers(control_interval));
 		break;
 
 	case position_setpoint_s::SETPOINT_TYPE_VELOCITY:
@@ -980,12 +981,15 @@ FixedWingModeManager::control_auto_loiter(const float control_interval, const Ve
 	// centripetal accel / bank build up snap-continuously instead of stepping at capture.
 	float loiter_la = sp.lateral_acceleration_feedforward;
 	const float snap_t = _param_fw_loit_snap_t.get();
+
 	if (snap_t > FLT_EPSILON) {
 		if (!_was_in_loiter) { _loiter_entry_time = hrt_absolute_time(); }
+
 		const float x = math::constrain((float)hrt_elapsed_time(&_loiter_entry_time) * 1e-6f / snap_t, 0.f, 1.f);
-		const float p9 = x*x*x*x*x*(126.f + x*(-420.f + x*(540.f + x*(-315.f + x*70.f))));
+		const float p9 = x * x * x * x * x * (126.f + x * (-420.f + x * (540.f + x * (-315.f + x * 70.f))));
 		loiter_la *= p9;
 	}
+
 	_was_in_loiter = true;
 	fw_lateral_ctrl_sp.lateral_acceleration = loiter_la;
 
@@ -2847,4 +2851,39 @@ lateral-longitudinal controller and and controllers below that (attitude, rate).
 extern "C" __EXPORT int fw_mode_manager_main(int argc, char *argv[])
 {
 	return ModuleBase::main(FixedWingModeManager::desc, argc, argv);
+}
+
+float FixedWingModeManager::descentSpoilers(const float dt)
+{
+	// Steep descents (Mk-7 arrival zone): at idle the airframe sinks about FW_T_SINK_MIN at trim speed; anything more
+	// TECS can only get by pitching down and overspeeding. Spoilers add drag instead: integrate the shortfall between
+	// the demanded and the actual sink rate while the throttle is at its minimum, release when it is not needed.
+	const float max_spoiler = _param_fw_spoilers_desc.get();
+	_tecs_status_sub.update();
+	const tecs_status_s &tecs = _tecs_status_sub.get();
+
+	if (max_spoiler < FLT_EPSILON || hrt_elapsed_time(&tecs.timestamp) > 500_ms || !PX4_ISFINITE(tecs.height_rate_setpoint)
+	    || !PX4_ISFINITE(tecs.height_rate)) {
+		_descent_spoiler = 0.f;
+		return 0.f;
+	}
+
+	static constexpr float kGain = 0.08f;      // [1/s per m/s] spoiler rate per m/s of missing sink
+	static constexpr float kRelease = 0.3f;    // [1/s] release rate
+	static constexpr float kMaxRate = 0.3f;    // [1/s] deployment rate limit (pitch / TECS stay ahead of it)
+
+	const bool at_idle = tecs.throttle_sp <= _param_fw_thr_min.get() + 0.03f;
+	const float sink_demand = -tecs.height_rate_setpoint;
+	const float sink_actual = -tecs.height_rate;
+	const float overspeed = tecs.true_airspeed_filtered - tecs.true_airspeed_sp;
+	float rate = -kRelease;
+
+	if (at_idle && sink_demand > 1.f) {
+		// missing sink, or sink bought with airspeed: both mean more drag is wanted
+		const float shortfall = math::max(sink_demand - sink_actual, 0.f) + math::max(overspeed - 1.f, 0.f);
+		rate = (shortfall > 0.2f) ? math::min(kGain * shortfall, kMaxRate) : -kRelease * 0.3f;
+	}
+
+	_descent_spoiler = math::constrain(_descent_spoiler + rate * dt, 0.f, max_spoiler);
+	return _descent_spoiler;
 }

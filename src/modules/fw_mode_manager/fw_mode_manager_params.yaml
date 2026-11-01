@@ -205,6 +205,21 @@ parameters:
       max: 1.0
       decimal: 2
       increment: 0.01
+    FW_SPOILERS_DESC:
+      description:
+        short: Spoiler limit for steep auto descents
+        long: |-
+          In auto position control (missions), the spoilers are deployed up to this setting when TECS demands a
+          descent it cannot reach at minimum throttle (or only by overspeeding), e.g. a steep descent into an arrival
+          zone. The deflection grows with the sink-rate shortfall and is released when no longer needed. Raise
+          FW_T_SINK_MAX to the sink rate the airframe reaches with these spoilers. 0 = off.
+      type: float
+      default: 0.0
+      unit: norm
+      min: 0.0
+      max: 1.0
+      decimal: 2
+      increment: 0.01
     FW_SPOILERS_LND:
       description:
         short: Spoiler landing setting

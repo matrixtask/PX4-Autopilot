@@ -88,6 +88,7 @@
 #include <uORB/topics/vehicle_local_position_setpoint.h>
 #include <uORB/topics/vehicle_status.h>
 #include <uORB/topics/wind.h>
+#include <uORB/topics/tecs_status.h>
 #include <uORB/topics/orbit_status.h>
 
 #ifdef CONFIG_FIGURE_OF_EIGHT
@@ -178,6 +179,7 @@ private:
 	uORB::SubscriptionInterval _parameter_update_sub{ORB_ID(parameter_update), 1_s};
 
 	uORB::Subscription _airspeed_validated_sub{ORB_ID(airspeed_validated)};
+	uORB::SubscriptionData<tecs_status_s> _tecs_status_sub{ORB_ID(tecs_status)};
 	uORB::Subscription _wind_sub{ORB_ID(wind)};
 	uORB::Subscription _control_mode_sub{ORB_ID(vehicle_control_mode)};
 	uORB::Subscription _global_pos_sub{ORB_ID(vehicle_global_position)};
@@ -398,6 +400,13 @@ private:
 	// FLAPS/SPOILERS
 	float _flaps_setpoint{0.f};
 	float _spoilers_setpoint{0.f};
+
+	/**
+	 * Spoiler-assisted descent (FW_SPOILERS_DESC): spoiler [0, FW_SPOILERS_DESC] that makes up the descent rate TECS
+	 * demands but cannot get at minimum throttle (or that it gets only by overspeeding). Integral on the shortfall.
+	 */
+	float descentSpoilers(float dt);
+	float _descent_spoiler{0.f};
 
 	hrt_abstime _time_in_fixed_bank_loiter{0}; // [us]
 	hrt_abstime _loiter_entry_time{0}; // [us] clothoid loiter-entry snap ramp start
@@ -867,6 +876,7 @@ private:
 		(ParamFloat<px4::params::FW_FLAPS_LND_SCL>) _param_fw_flaps_lnd_scl,
 		(ParamFloat<px4::params::FW_FLAPS_TO_SCL>) _param_fw_flaps_to_scl,
 		(ParamFloat<px4::params::FW_SPOILERS_LND>) _param_fw_spoilers_lnd,
+		(ParamFloat<px4::params::FW_SPOILERS_DESC>) _param_fw_spoilers_desc,
 		(ParamInt<px4::params::FW_POS_STK_CONF>) _param_fw_pos_stk_conf,
 		(ParamInt<px4::params::FW_GPSF_LT>) _param_nav_gpsf_lt,
 		(ParamFloat<px4::params::FW_GPSF_R>) _param_nav_gpsf_r,
