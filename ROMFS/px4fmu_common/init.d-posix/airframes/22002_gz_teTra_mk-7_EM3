@@ -459,4 +459,18 @@ param set-default MPC_LND_GEAR_NZ 0.663
 param set-default MPC_LND_GEAR_MX -0.375
 param set-default MPC_LND_GEAR_MY 0.9115
 param set-default MPC_LND_GEAR_MZ 0.800
-param set-default MPC_LAND_SLOPE 5  # Mk-7 allowable landing-site slope (Tasuku): steeper -> stop the descent and hold
+param set-default MPC_LAND_SLOPE 5  # Mk-7 allowable landing-site slope (Tasuku, kept at 5 deg 11/01)
+# Steeper site: search nearby (rings of 12 m up to 40 m, starting downhill, at 10 m gear height), land on the first
+# candidate the terrain camera finds flat, smooth and free of steps; none -> manual landing (pilot, Position mode).
+# Tasuku 11/01: 降りられないと詰む -> 代替を探すかマニュアル着陸かを選べるように (MPC_LAND_SLP_ACT 1 / 2).
+param set-default MPC_LAND_SLP_ACT 1
+# Final descent (Tasuku 11/01): descent limit (MPC_Z_V_AUTO_DN, VRS chart) -> 0.5 m/s approach from 3 m gear height ->
+# 0.3 m/s (MPC_LAND_CRWL) from 1 m -> flare to 0.1 m/s over the last 0.3 m. Braking curves at 1 m/s^2 with the auto
+# jerk; the old 10 m -> 5 m interpolation reached a far pad at 0.8-0.9 m/s (MPC_JERK_AUTO 0.5 lags the setpoint).
+param set-default MPC_LAND_V_APP 0.5
+param set-default MPC_LAND_H_APP 3.0
+param set-default MPC_LAND_ALT3 1.0
+param set-default MPC_LAND_CRWL 0.3
+param set-default MPC_LAND_FLR_H 0.3
+param set-default MPC_LAND_FLR_V 0.1
+param set-default MPC_LAND_DEC 1.0
