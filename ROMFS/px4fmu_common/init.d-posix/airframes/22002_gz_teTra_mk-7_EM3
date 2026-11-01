@@ -438,3 +438,25 @@ param set-default VT_BFF_RMIN 0.35  # rotors keep >= 35 % of the weight: 0.25 cl
 param set-default VT_BFF_AMAX 14  # deg, stall 19.4
 param set-default VT_BFF_PRATE 6  # deg/s pitch-setpoint limit (sim peak 2.8 deg/s)
 param set-default VT_BFF_VEXIT 3  # end the back transition at 3 m/s over the pad (MPC_XY_CRUISE 20 overshot the pad in MC)
+
+# Landing sensors (2026-11-01, Tasuku: 測距レーダー＋カメラで平面の傾斜も取って補正). Model: radar_alt (radar
+# altimeter, 0.2-100 m) and terrain_cam (depth camera -> landing_surface) under the fuselage skin, 0.6 m forward,
+# 0.46 m below the origin: 0.34 m above the ground when parked. First try at 0.62 m below: after touchdown the radar was
+# inside its minimum range, dist_bottom stayed at 1.6 m and the land detector never confirmed the landing. Without a range sensor the landing slowdown used the height above HOME (FlightTask::_evaluateDistanceToGround):
+# at a pad 54 m above home the vehicle still came down at 3 m/s (HQ01 runs 2-4, 0.2-2.8 m/s touchdowns).
+param set-default EKF2_RNG_CTRL 1  # conditional: range as height reference near the ground, terrain estimate always
+# Range as a height aid only in the last 0.7 m (70 % of 1 m, the parameter minimum); above that it feeds the terrain
+# estimate only. Hovering 3-4 m over an 8 deg pad with range height aiding, the measured slope drifted 8.4 -> 10.1 deg
+# within 2 min; terrain-only: 8.3-8.5 deg (runs slope8 / slope8b).
+param set-default EKF2_RNG_A_HMAX 1
+param set-default EKF2_RNG_POS_X 0.6
+param set-default EKF2_RNG_POS_Z 0.46
+param set-default EKF2_MIN_RNG 0.2
+param set-default EKF2_RNG_NOISE 0.1
+# Gear contact points (model.sdf wheels: nose x 1.865 / 0.663 below, mains x -0.375 / y +-0.9115 / 0.800 below)
+param set-default MPC_LND_GEAR_NX 1.865
+param set-default MPC_LND_GEAR_NZ 0.663
+param set-default MPC_LND_GEAR_MX -0.375
+param set-default MPC_LND_GEAR_MY 0.9115
+param set-default MPC_LND_GEAR_MZ 0.800
+param set-default MPC_LAND_SLOPE 5  # Mk-7 allowable landing-site slope (Tasuku): steeper -> stop the descent and hold
