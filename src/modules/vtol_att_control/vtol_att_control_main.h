@@ -249,6 +249,7 @@ private:
 	DEFINE_PARAMETERS(
 		(ParamInt<px4::params::VT_TYPE>) _param_vt_type,
 		(ParamFloat<px4::params::VT_SPOILER_MC_LD>) _param_vt_spoiler_mc_ld,
+		(ParamFloat<px4::params::VT_B_SPOILER>) _param_vt_b_spoiler,
 		(ParamFloat<px4::params::VT_DLC_GAIN>) _param_vt_dlc_gain,
 		(ParamInt<px4::params::VT_FW_LK_MC>) _param_vt_fw_lk_mc,
 		(ParamBool<px4::params::FW_USE_AIRSPD>) _param_fw_use_airspd

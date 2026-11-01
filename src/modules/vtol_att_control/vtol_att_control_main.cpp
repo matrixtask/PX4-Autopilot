@@ -528,6 +528,12 @@ VtolAttitudeControl::Run()
 				spoiler_control = _param_vt_spoiler_mc_ld.get();
 			}
 
+			// Back transition: dump wing lift and add drag so the rotors take the weight early and the aircraft can
+			// brake and descend at once (Mk-7: without it the wing kept carrying the weight down to ~30 m/s).
+			if (_vtol_vehicle_status.vehicle_vtol_state == vtol_vehicle_status_s::VEHICLE_VTOL_STATE_TRANSITION_TO_MC) {
+				spoiler_control = _param_vt_b_spoiler.get();
+			}
+
 			normalized_unsigned_setpoint_s spoiler_setpoint;
 			spoiler_setpoint.normalized_setpoint = spoiler_control;
 			spoiler_setpoint.timestamp = hrt_absolute_time();

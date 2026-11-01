@@ -80,8 +80,9 @@ parameters:
         short: Descent rate during back transition
         long: |-
           Auto modes: the back transition descends towards the landing point (but not below VT_B_TRANS_HMIN above
-          it) at up to this rate while horizontal speed is above 50 kt. Between 50 and 30 kt the limit blends down
-          to VT_B_TRANS_VZLO (vortex ring state). 0 holds altitude (upstream behaviour).
+          it) at up to this rate between 50 and 60 kt horizontal speed. Above 60 kt the limit fades to 0 at 80 kt
+          (brake first: descending at speed cancels the deceleration). Between 50 and 30 kt it blends down to
+          VT_B_TRANS_VZLO (vortex ring state). 0 holds altitude (upstream behaviour).
       type: float
       default: 0.0
       unit: m/s
@@ -377,6 +378,19 @@ parameters:
       default: 0
       min: 0
       max: 1
+    VT_B_SPOILER:
+      description:
+        short: Spoiler setting during the back transition
+        long: |-
+          Auto modes: spoiler setpoint while transitioning to MC (lift dump + drag), so the rotors carry the weight
+          early and the vehicle can brake and descend at the same time. Surfaces take it via CA_SV_CSn_SPOIL. 0 = off.
+      type: float
+      default: 0.0
+      unit: norm
+      min: 0
+      max: 1
+      decimal: 2
+      increment: 0.05
     VT_SPOILER_MC_LD:
       description:
         short: Spoiler setting while landing (hover)
