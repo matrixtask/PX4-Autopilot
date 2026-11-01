@@ -89,6 +89,9 @@ private:
 	float _transition_yaw{NAN};          ///< heading at the start of the front transition [rad]
 
 	// Feed-forward back-transition brake (VT_BFF_*, lib/vtol_brake)
+	static constexpr float kLateralGuidanceGain = 3.f;      ///< proportional-navigation constant N
+	static constexpr float kLateralGuidanceMaxAccel = 2.f;  ///< [m/s^2] ~12 deg bank
+	static constexpr float kLateralGuidanceMinDist = 15.f;  ///< [m] below: MC position control
 	static constexpr float kBrakeDecelCap = 1.25f;   ///< decel demand <= 1.25 VT_B_DEC_MSS (bt_sim: 2x saturates the brake)
 	static constexpr float kBrakeJerk = 1.5f;        ///< [m/s^3] ramp-in of the decel demand (comfort)
 	static constexpr float kBrakeTrimMin = -0.5f;    ///< [m/s^2] limits of the decel trim integrator
@@ -120,6 +123,8 @@ private:
 
 	float computeBackTransitionTiltSetpoint();
 	float computeBackTransitionDecelSetpoint() const;
+	bool backTransitionTarget(matrix::Vector2f &pos_to_target) const;
+	matrix::Vector2f computeBackTransitionLateralAccel() const;
 	float computeBackTransitionBrake();
 	void loadBrakeParams();
 	float computeVerticalVelocityTarget() const;

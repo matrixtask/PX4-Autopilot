@@ -374,7 +374,7 @@ param set-default VT_LIFT_HND_V 72
 param set-default VT_LIFT_HND_THR 0.42
 # 11/02 (Tasuku: 前方遷移の終わりで揺れる): the climbing transition left the lift rotors at 0.52, then they stepped to the
 # handoff schedule (0.21): 3.7 m/s climb -> 3.6 m/s sink and a 9.5 deg/s roll. Release them over 3 s instead.
-param set-default VT_LIFT_HND_RT 3.0
+param set-default VT_LIFT_HND_RT 8.0  # 3 s still left a 3.6 m/s sink (HQ01 v6): give TECS time to raise the angle of attack
 # Transition altitude-loss abort = EM3 requirement (+-15 m around the target altitude during transitions).
 param set-default VT_QC_T_ALT_LOSS 15
 param set-default RTL_TYPE 3

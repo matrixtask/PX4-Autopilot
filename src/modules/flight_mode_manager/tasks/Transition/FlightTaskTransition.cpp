@@ -183,6 +183,14 @@ bool FlightTaskTransition::update()
 
 	_acceleration_setpoint.xy() = tanf(tilt_setpoint) * vertical_specific_force * horizontal_acceleration_direction;
 
+	if (!_sub_vehicle_status.get().in_transition_to_fw) {
+		// Back transition: steer onto the end point (proportional navigation on the line of sight). The braking
+		// above only acts along the velocity; a lateral offset from the approach turn stayed, and with the vehicle
+		// slow the remaining motion was mostly sideways (HQ01: 12 m/s across, passed 25-30 m beside the pad and
+		// overshot 56 m).
+		_acceleration_setpoint.xy() += computeBackTransitionLateralAccel();
+	}
+
 	// Upstream commands zero yaw rate only, so the heading drifts while the MC yaw authority is still needed
 	// (Mk-7 EM3: +16 deg from the pusher reaction torque, then a 20 deg bank and 34 m sink at FW entry).
 	// VT_F_YAW_HOLD holds the heading the front transition started with.
@@ -255,26 +263,66 @@ float FlightTaskTransition::computeVerticalVelocityTarget() const
 	return math::constrain((altitude - floor_alt) / kAltitudeCaptureTimeConstant, 0.f, sink_limit);
 }
 
+bool FlightTaskTransition::backTransitionTarget(Vector2f &pos_to_target) const
+{
+	const Vector2f position_xy{_position};
+
+	if (_sub_vehicle_local_position.get().eph > 10.f || !_sub_position_sp_triplet.get().current.valid
+	    || !_sub_vehicle_local_position.get().xy_global || !position_xy.isAllFinite()) {
+		return false;
+	}
+
+	Vector2f position_setpoint_local;
+	_geo_projection.project(_sub_position_sp_triplet.get().current.lat, _sub_position_sp_triplet.get().current.lon,
+				position_setpoint_local(0), position_setpoint_local(1));
+	pos_to_target = position_setpoint_local - position_xy;
+	return pos_to_target.isAllFinite();
+}
+
+Vector2f FlightTaskTransition::computeBackTransitionLateralAccel() const
+{
+	const Vector2f velocity_xy{_velocity};
+	Vector2f pos_to_target;
+
+	if (!velocity_xy.isAllFinite() || !backTransitionTarget(pos_to_target)) {
+		return Vector2f{0.f, 0.f};
+	}
+
+	const float dist = pos_to_target.norm();
+
+	if (dist < kLateralGuidanceMinDist) {
+		return Vector2f{0.f, 0.f}; // the MC position controller takes the last metres
+	}
+
+	const Vector2f los = pos_to_target / dist;
+	const float closing_speed = velocity_xy.dot(los);
+
+	if (closing_speed < 1.f) {
+		return Vector2f{0.f, 0.f};
+	}
+
+	// a = -N Vc (v_perp / d): N Vc times the line-of-sight rate, towards the line of sight
+	const Vector2f v_perp = velocity_xy - los * closing_speed;
+	Vector2f accel = -v_perp * (kLateralGuidanceGain * closing_speed / dist);
+
+	if (accel.longerThan(kLateralGuidanceMaxAccel)) {
+		accel = accel.normalized() * kLateralGuidanceMaxAccel;
+	}
+
+	return accel;
+}
+
 float FlightTaskTransition::computeBackTransitionDecelSetpoint() const
 {
 	// Deceleration that stops the vehicle at the back-transition end point: closing speed^2 / (2 distance).
 	// Upstream used the distance along the velocity direction; at low speed a small lateral drift turns the velocity
 	// away from the point, that distance collapses (HQ01: 13 m along-velocity with the pad 79 m away) and the demand
 	// stopped the vehicle 80 m short, followed by a 7 m/s MC reposition with a pitch / roll weave.
-	const Vector2f position_xy{_position};
 	const Vector2f velocity_xy{_velocity};
 	float deceleration_setpoint = _param_vt_b_dec_mss;
+	Vector2f pos_to_target;
 
-	const float max_hor_pos_uncertainty_limit = 10.f;
-
-	if (_sub_vehicle_local_position.get().eph < max_hor_pos_uncertainty_limit
-	    && _sub_position_sp_triplet.get().current.valid
-	    && _sub_vehicle_local_position.get().xy_global && position_xy.isAllFinite() && velocity_xy.isAllFinite()) {
-		Vector2f position_setpoint_local;
-		_geo_projection.project(_sub_position_sp_triplet.get().current.lat, _sub_position_sp_triplet.get().current.lon,
-					position_setpoint_local(0), position_setpoint_local(1));
-
-		const Vector2f pos_to_target = position_setpoint_local - position_xy; // backtransition end-point w.r.t. vehicle
+	if (velocity_xy.isAllFinite() && backTransitionTarget(pos_to_target)) {
 		const float dist_to_target = pos_to_target.norm();
 		const float closing_speed = dist_to_target > FLT_EPSILON ? velocity_xy.dot(pos_to_target / dist_to_target) : 0.f;
 
