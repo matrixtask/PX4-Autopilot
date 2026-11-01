@@ -414,10 +414,10 @@ param set-default FW_T_SINK_R_SP 12.0  # auto descent rate (was 7)
 param set-default FW_T_SINK_MAX 13.0   # (was 8)
 # Smooth phase changes in FW (11/02, Tasuku: フェーズ間の急峻な変化): the TECS altitude reference had no jerk limit and
 # FW_T_VERT_ACC 7 m/s^2, so every waypoint switch stepped the height-rate setpoint (0 <-> -10 m/s in ~2 s, nz 0.55-1.45 g,
-# pusher 0.2 <-> 1.0). Reference S-curve at 0.1 g / 0.05 g/s (evaluation comfort limit 0.03-0.15 g); FW_T_VERT_ACC keeps
+# pusher 0.2 <-> 1.0). Reference S-curve at 0.15 g / 0.075 g/s (evaluation comfort limit 0.03-0.15 g); FW_T_VERT_ACC keeps
 # limiting the pitch rate only. Each leg is flown as a straight glide path (no step-hold-step at short legs).
-param set-default FW_T_REF_ACC 1.0
-param set-default FW_T_REF_JERK 0.5
+param set-default FW_T_REF_ACC 1.5  # 0.15 g (comfort upper limit); 1.0 lagged the steep arrival legs by ~30 m (v9)
+param set-default FW_T_REF_JERK 0.75
 param set-default FW_WP_GLIDE 1
 param set-default FW_WP_GLIDE_LD 1.5  # TECS lags its reference ~1.5 s in the descent (v8: 12 m at 8 m/s)
 param set-default FW_THR_SLEW_MAX 0.3
