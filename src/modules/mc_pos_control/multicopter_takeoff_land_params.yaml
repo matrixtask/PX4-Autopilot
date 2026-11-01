@@ -65,15 +65,124 @@ parameters:
       description:
         short: Steepest ground slope accepted for an automatic landing
         long: |-
-          With a terrain camera (landing_surface): below MPC_LAND_ALT1 the descent stops (hold) while the measured
-          ground plane under the vehicle is steeper than this, instead of touching down one gear first on a slope
-          the aircraft cannot stand on. 0 = no check.
+          With a terrain camera (landing_surface): below MPC_LAND_ALT1 the descent stops while the measured ground
+          plane under the vehicle is steeper than this, instead of touching down one gear first on a slope the
+          aircraft cannot stand on; what follows is MPC_LAND_SLP_ACT. 0 = no check.
       type: float
       default: 0.0
       unit: deg
       min: 0
       max: 30
       decimal: 1
+    MPC_LAND_SLP_ACT:
+      description:
+        short: Action when the landing site is too steep
+        long: |-
+          0: stop the descent and hold.
+          1: search nearby (MPC_LND_SRCH_*): fly to candidate points on rings around the pad, starting downhill,
+          measure each with the terrain camera and land on the first one that is flat enough (MPC_LAND_SLOPE),
+          smooth (MPC_LND_ROUGH) and free of steps or obstacles (90 % of the points on the plane). If none is
+          found, as 2.
+          2: manual landing: hold and ask the pilot to take over (Position mode).
+      type: enum
+      values:
+        0: Hold
+        1: Search for a site, then manual
+        2: Manual landing
+      default: 0
+    MPC_LND_SRCH_H:
+      description:
+        short: Landing-site search height
+        long: Landing-gear height above the ground while flying between and measuring search candidates.
+      type: float
+      default: 10.0
+      unit: m
+      min: 3
+      max: 50
+      decimal: 1
+    MPC_LND_SRCH_S:
+      description:
+        short: Landing-site search ring spacing
+        long: Radius step between candidate rings and spacing of the points on a ring. About the terrain camera footprint at MPC_LND_SRCH_H.
+      type: float
+      default: 12.0
+      unit: m
+      min: 2
+      max: 100
+      decimal: 1
+    MPC_LND_SRCH_R:
+      description:
+        short: Landing-site search radius
+        long: Largest distance from the original landing point to search; beyond it the landing becomes manual.
+      type: float
+      default: 40.0
+      unit: m
+      min: 0
+      max: 500
+      decimal: 0
+    MPC_LND_ROUGH:
+      description:
+        short: Roughest ground accepted by the landing-site search
+        long: RMS deviation of the measured points from the fitted plane.
+      type: float
+      default: 0.15
+      unit: m
+      min: 0.01
+      max: 2
+      decimal: 2
+    MPC_LAND_V_APP:
+      description:
+        short: Landing approach speed (measured-surface profile)
+        long: |-
+          With a measured height above the ground (terrain camera or range sensor) the vertical landing follows a
+          descent-speed profile: MPC_Z_V_AUTO_DN (descent limit) braking to this speed at MPC_LAND_H_APP, then
+          MPC_LAND_CRWL from MPC_LAND_ALT3, then a flare from MPC_LAND_CRWL to MPC_LAND_FLR_V over the last
+          MPC_LAND_FLR_H. Heights are landing-gear heights. 0 = off (MPC_LAND_ALT1/ALT2 interpolation as upstream).
+      type: float
+      default: 0.0
+      unit: m/s
+      min: 0
+      max: 3
+      decimal: 2
+    MPC_LAND_H_APP:
+      description:
+        short: Landing approach gate height
+        long: Landing-gear height at which the descent has slowed to MPC_LAND_V_APP.
+      type: float
+      default: 3.0
+      unit: m
+      min: 0.5
+      max: 20
+      decimal: 1
+    MPC_LAND_FLR_H:
+      description:
+        short: Landing flare height
+        long: Landing-gear height below which the sink rate is reduced linearly from MPC_LAND_CRWL to MPC_LAND_FLR_V.
+      type: float
+      default: 0.3
+      unit: m
+      min: 0
+      max: 2
+      decimal: 2
+    MPC_LAND_FLR_V:
+      description:
+        short: Landing sink rate at contact
+      type: float
+      default: 0.1
+      unit: m/s
+      min: 0.05
+      max: 1
+      decimal: 2
+    MPC_LAND_DEC:
+      description:
+        short: Landing profile braking deceleration
+        long: Deceleration of the braking curves in front of the approach and crawl gates (jerk MPC_JERK_AUTO). Keep below MPC_ACC_DOWN_MAX.
+      type: float
+      default: 1.0
+      unit: m/s^2
+      min: 0.1
+      max: 5
+      decimal: 2
     MPC_LND_GEAR_NX:
       description:
         short: Landing gear, nose contact point forward of the vehicle origin

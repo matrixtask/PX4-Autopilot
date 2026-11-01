@@ -139,7 +139,34 @@ protected:
 	 */
 	float landingGearClearance();
 	float _landing_slope{NAN};
+	float _landing_slope_azimuth{NAN};
 	bool _landing_slope_warned{false};
+
+	/**
+	 * Landing site on a measured surface (MPC_LAND_SLP_ACT): sets the vertical speed while searching / holding and
+	 * the landing point (_land_site_target, NAN = the navigator's). gear_height: NAN without a measurement.
+	 */
+	void updateLandingSite(float dist_to_ground, float gear_height, float &vertical_speed);
+	void nextLandingSiteCandidate();
+	void resetLandingSite();
+	float searchHeightSpeed(float gear_height) const;
+
+	enum class LandingSite : uint8_t {
+		Descend,   ///< descending on the navigator's point or an accepted candidate
+		Transit,   ///< flying to a search candidate at MPC_LND_SRCH_H
+		Measure,   ///< over a candidate, collecting terrain-camera fits
+		Manual     ///< holding, pilot to take over
+	};
+
+	LandingSite _land_site{LandingSite::Descend};
+	matrix::Vector2f _land_site_target{NAN, NAN};
+	matrix::Vector2f _land_site_origin{NAN, NAN};
+	float _land_site_downhill{0.f};
+	int _land_site_index{0};
+	hrt_abstime _land_site_arrival{0};
+	hrt_abstime _land_site_last_sample{0};
+	int _land_site_samples{0};
+	bool _land_site_ok{true};
 	bool _takeoff_left_ground_zone{false}; ///< takeoff climbed past MPC_LAND_ALT1 once: no second ramp (range sensor over obstacles)
 
 	float _target_acceptance_radius{0.0f}; /**< Acceptances radius of the target */
@@ -184,6 +211,16 @@ protected:
 					(ParamFloat<px4::params::MPC_LAND_ALT2>) _param_mpc_land_alt2,
 					(ParamFloat<px4::params::MPC_LAND_ALT3>) _param_mpc_land_alt3,
 					(ParamFloat<px4::params::MPC_LAND_SLOPE>) _param_mpc_land_slope,
+					(ParamInt<px4::params::MPC_LAND_SLP_ACT>) _param_mpc_land_slp_act,
+					(ParamFloat<px4::params::MPC_LND_SRCH_H>) _param_mpc_lnd_srch_h,
+					(ParamFloat<px4::params::MPC_LND_SRCH_S>) _param_mpc_lnd_srch_s,
+					(ParamFloat<px4::params::MPC_LND_SRCH_R>) _param_mpc_lnd_srch_r,
+					(ParamFloat<px4::params::MPC_LND_ROUGH>) _param_mpc_lnd_rough,
+					(ParamFloat<px4::params::MPC_LAND_V_APP>) _param_mpc_land_v_app,
+					(ParamFloat<px4::params::MPC_LAND_H_APP>) _param_mpc_land_h_app,
+					(ParamFloat<px4::params::MPC_LAND_FLR_H>) _param_mpc_land_flr_h,
+					(ParamFloat<px4::params::MPC_LAND_FLR_V>) _param_mpc_land_flr_v,
+					(ParamFloat<px4::params::MPC_LAND_DEC>) _param_mpc_land_dec,
 					(ParamFloat<px4::params::MPC_LND_GEAR_NX>) _param_mpc_lnd_gear_nx,
 					(ParamFloat<px4::params::MPC_LND_GEAR_NZ>) _param_mpc_lnd_gear_nz,
 					(ParamFloat<px4::params::MPC_LND_GEAR_MX>) _param_mpc_lnd_gear_mx,

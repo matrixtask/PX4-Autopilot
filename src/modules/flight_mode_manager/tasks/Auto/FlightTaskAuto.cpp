@@ -36,6 +36,7 @@
 
 #include "FlightTaskAuto.hpp"
 #include <lib/landing_surface/PlaneFit.hpp>
+#include <lib/landing_surface/LandingProfile.hpp>
 #include <px4_platform_common/events.h>
 #include <mathlib/mathlib.h>
 #include <float.h>
@@ -169,6 +170,14 @@ bool FlightTaskAuto::update()
 		waypoints[2] = _position_setpoint;
 	}
 
+	if (_type == WaypointType::land && PX4_ISFINITE(_land_site_target(0))) {
+		// Landing-site search / alternate site: fly straight from here to the candidate. The smoothing follows the
+		// line previous -> target, which for the navigator's landing point is the arrival leg; the vehicle could
+		// only move along that line and never reached candidates beside it (SITL: 10 min shuttling along the leg).
+		waypoints[0] = _position;
+		waypoints[2] = _position_setpoint;
+	}
+
 	// Yaw-first holds the vehicle while it turns before a horizontal move. A takeoff is a vertical move: let it
 	// climb while turning (navigator MIS_TKO_YAW_NX turns to the first leg during the climb; holding the climb
 	// stopped Mk-7 EM3 at 8 m for 8 s).
@@ -233,36 +242,44 @@ void FlightTaskAuto::_prepareLandSetpoints()
 {
 	_velocity_setpoint.setNaN(); // Don't take over any smoothed velocity setpoint
 
-	// Slow down automatic descend close to ground. With a terrain camera the height is the clearance of the lowest
-	// landing-gear contact point above the measured ground plane (on a slope the uphill wheel touches first);
-	// otherwise the distance sensor / altitude above home as upstream.
-	const float gear_clearance = landingGearClearance();
-	const float dist_to_ground = PX4_ISFINITE(gear_clearance) ? gear_clearance : _dist_to_ground;
-	float vertical_speed = math::interpolate(dist_to_ground,
-			       _param_mpc_land_alt2.get(), _param_mpc_land_alt1.get(),
-			       _param_mpc_land_speed.get(), _param_mpc_z_vel_max_dn.get());
-
-	bool range_dist_available = PX4_ISFINITE(_dist_to_bottom) || PX4_ISFINITE(gear_clearance);
-
-	if (range_dist_available && dist_to_ground <= _param_mpc_land_alt3.get()) {
-		vertical_speed = _param_mpc_land_crwl.get();
+	if (_type_previous != WaypointType::land) {
+		resetLandingSite();
 	}
 
-	// Ground too steep to stand on: stop the descent below MPC_LAND_ALT1 and hold (navigator / pilot decides).
-	if (_param_mpc_land_slope.get() > FLT_EPSILON && PX4_ISFINITE(_landing_slope)
-	    && _landing_slope > math::radians(_param_mpc_land_slope.get()) && dist_to_ground < _param_mpc_land_alt1.get()) {
-		vertical_speed = 0.f;
+	// Height above the ground. With a terrain camera: clearance of the lowest landing-gear contact point above the
+	// measured ground plane (on a slope the uphill wheel touches first). With only a range sensor: the vehicle's
+	// distance to the ground minus the gear depth. Otherwise the altitude above home as upstream.
+	const float gear_clearance = landingGearClearance();
+	const float gear_height = PX4_ISFINITE(gear_clearance) ? gear_clearance
+				  : (PX4_ISFINITE(_dist_to_bottom) ? _dist_to_bottom - _param_mpc_lnd_gear_mz.get() : NAN);
+	const float dist_to_ground = PX4_ISFINITE(gear_clearance) ? gear_clearance : _dist_to_ground;
+	float vertical_speed = NAN;
 
-		if (!_landing_slope_warned) {
-			events::send<float, float>(events::ID("flight_task_land_slope"), events::Log::Warning,
-						   "Landing stopped: ground slope {1:.1} deg exceeds {2:.1} deg",
-						   math::degrees(_landing_slope), _param_mpc_land_slope.get());
-			_landing_slope_warned = true;
+	if (_param_mpc_land_v_app.get() > FLT_EPSILON && PX4_ISFINITE(gear_height)) {
+		// measured surface: descent limit -> approach speed -> crawl -> flare (lib/landing_surface/LandingProfile.hpp)
+		const landing_surface::DescentProfile profile{
+			_param_mpc_z_v_auto_dn.get(), _param_mpc_land_v_app.get(), _param_mpc_land_h_app.get(),
+			_param_mpc_land_crwl.get(), _param_mpc_land_alt3.get(),
+			_param_mpc_land_flr_h.get(), _param_mpc_land_flr_v.get(),
+			_param_mpc_land_dec.get(), _param_mpc_jerk_auto.get()};
+		vertical_speed = landing_surface::descentSpeed(profile, gear_height);
+
+	} else {
+		vertical_speed = math::interpolate(dist_to_ground,
+						   _param_mpc_land_alt2.get(), _param_mpc_land_alt1.get(),
+						   _param_mpc_land_speed.get(), _param_mpc_z_vel_max_dn.get());
+
+		const bool range_dist_available = PX4_ISFINITE(_dist_to_bottom) || PX4_ISFINITE(gear_clearance);
+
+		if (range_dist_available && dist_to_ground <= _param_mpc_land_alt3.get()) {
+			vertical_speed = _param_mpc_land_crwl.get();
 		}
 	}
 
+	// Ground too steep to stand on: hold, search for another site or hand over to the pilot (MPC_LAND_SLP_ACT)
+	updateLandingSite(dist_to_ground, gear_height, vertical_speed);
+
 	if (_type_previous != WaypointType::land) {
-		_landing_slope_warned = false;
 		// initialize yaw and xy-position
 		_land_heading = PX4_ISFINITE(_yaw_setpoint) ? _yaw_setpoint : _yaw_setpoint_previous;
 
@@ -276,6 +293,10 @@ void FlightTaskAuto::_prepareLandSetpoints()
 
 	// Update xy-position in case of landing position changes (etc. precision landing)
 	_land_position = Vector3f(_triplet_current(0), _triplet_current(1), NAN);
+
+	if (PX4_ISFINITE(_land_site_target(0))) {
+		_land_position.xy() = _land_site_target; // searching for / landing on another site
+	}
 
 #if defined(CONFIG_MODULES_VISION_TARGET_ESTIMATOR) && CONFIG_MODULES_VISION_TARGET_ESTIMATOR
 
@@ -819,6 +840,7 @@ float FlightTaskAuto::landingGearClearance()
 
 	if (!surface.valid || hrt_elapsed_time(&surface.timestamp) > 500_ms || !PX4_ISFINITE(surface.height)) {
 		_landing_slope = NAN;
+		_landing_slope_azimuth = NAN;
 		return NAN;
 	}
 
@@ -828,9 +850,141 @@ float FlightTaskAuto::landingGearClearance()
 	plane.b = surface.dzdy;
 	plane.c = surface.height;
 	_landing_slope = surface.slope;
+	_landing_slope_azimuth = surface.slope_azimuth;
 
 	const float nx = _param_mpc_lnd_gear_nx.get(), nz = _param_mpc_lnd_gear_nz.get();
 	const float mx = _param_mpc_lnd_gear_mx.get(), my = _param_mpc_lnd_gear_my.get(), mz = _param_mpc_lnd_gear_mz.get();
 	const matrix::Vector3f gear[3] = {{nx, 0.f, nz}, {mx, my, mz}, {mx, -my, mz}};
 	return landing_surface::gearClearance(plane, matrix::Quatf(_attitude_sub.get().q), gear, 3);
+}
+
+void FlightTaskAuto::resetLandingSite()
+{
+	_land_site = LandingSite::Descend;
+	_land_site_target.setNaN();
+	_land_site_origin.setNaN();
+	_land_site_index = 0;
+	_landing_slope_warned = false;
+}
+
+float FlightTaskAuto::searchHeightSpeed(float gear_height) const
+{
+	// hold the search height above the (unknown) terrain: proportional on the measured gear height, positive down
+	if (!PX4_ISFINITE(gear_height)) {
+		return 0.f;
+	}
+
+	return math::constrain(0.5f * (gear_height - _param_mpc_lnd_srch_h.get()), -1.f, 1.f);
+}
+
+void FlightTaskAuto::nextLandingSiteCandidate()
+{
+	matrix::Vector2f offset;
+
+	if (landing_surface::searchCandidate(_land_site_index, _param_mpc_lnd_srch_s.get(), _param_mpc_lnd_srch_r.get(),
+					     _land_site_downhill, offset)) {
+		_land_site_index++;
+		_land_site_target = _land_site_origin + offset;
+		_land_site = LandingSite::Transit;
+
+	} else {
+		_land_site = LandingSite::Manual;
+		_land_site_target = matrix::Vector2f(_position.xy());
+		events::send<float>(events::ID("flight_task_land_site_none"), {events::Log::Critical, events::LogInternal::Warning},
+				    "No landing site flat enough within {1:.0m}: take manual control (Position mode)",
+				    _param_mpc_lnd_srch_r.get());
+	}
+}
+
+void FlightTaskAuto::updateLandingSite(float dist_to_ground, float gear_height, float &vertical_speed)
+{
+	const float slope_limit = math::radians(_param_mpc_land_slope.get());
+	const bool too_steep = _param_mpc_land_slope.get() > FLT_EPSILON && PX4_ISFINITE(_landing_slope)
+			       && _landing_slope > slope_limit;
+
+	switch (_land_site) {
+	case LandingSite::Descend:
+		if (too_steep && dist_to_ground < _param_mpc_land_alt1.get()) {
+			vertical_speed = 0.f;
+
+			if (_param_mpc_land_slp_act.get() == 1) {
+				if (!PX4_ISFINITE(_land_site_origin(0))) {
+					// first rejection: search around the navigator's landing point, starting downhill
+					_land_site_origin = matrix::Vector2f(_triplet_current(0), _triplet_current(1));
+					_land_site_downhill = PX4_ISFINITE(_landing_slope_azimuth) ? _landing_slope_azimuth : 0.f;
+					events::send<float, float>(events::ID("flight_task_land_site_search"), events::Log::Warning,
+								   "Landing site slope {1:.1} deg exceeds {2:.1} deg: searching nearby",
+								   math::degrees(_landing_slope), _param_mpc_land_slope.get());
+				}
+
+				nextLandingSiteCandidate();
+
+			} else if (!_landing_slope_warned) {
+				_landing_slope_warned = true;
+
+				if (_param_mpc_land_slp_act.get() == 2) {
+					_land_site = LandingSite::Manual;
+					_land_site_target = matrix::Vector2f(_position.xy());
+					events::send<float, float>(events::ID("flight_task_land_slope_manual"), {events::Log::Critical, events::LogInternal::Warning},
+								   "Landing site slope {1:.1} deg exceeds {2:.1} deg: take manual control (Position mode)",
+								   math::degrees(_landing_slope), _param_mpc_land_slope.get());
+
+				} else {
+					events::send<float, float>(events::ID("flight_task_land_slope"), events::Log::Warning,
+								   "Landing stopped: ground slope {1:.1} deg exceeds {2:.1} deg",
+								   math::degrees(_landing_slope), _param_mpc_land_slope.get());
+				}
+			}
+		}
+
+		break;
+
+	case LandingSite::Transit: {
+			vertical_speed = searchHeightSpeed(gear_height);
+			const bool arrived = (_land_site_target - matrix::Vector2f(_position.xy())).norm() < 2.f
+					     && matrix::Vector2f(_velocity.xy()).norm() < 0.7f
+					     && (!PX4_ISFINITE(gear_height) || fabsf(gear_height - _param_mpc_lnd_srch_h.get()) < 3.f);
+
+			if (arrived) {
+				_land_site = LandingSite::Measure;
+				_land_site_arrival = hrt_absolute_time();
+				_land_site_last_sample = _land_site_arrival;
+				_land_site_samples = 0;
+				_land_site_ok = true;
+			}
+
+			break;
+		}
+
+	case LandingSite::Measure: {
+			vertical_speed = searchHeightSpeed(gear_height);
+			const landing_surface_s &surface = _landing_surface_sub.get();
+
+			if (surface.timestamp > _land_site_last_sample) {
+				// every fit over the candidate must pass: flat, smooth, and nearly all points on the plane (a step,
+				// a wall or an obstacle in view leaves points off the plane even when the fit itself is flat)
+				_land_site_last_sample = surface.timestamp;
+				_land_site_samples++;
+				const float on_plane = surface.points > 0 ? static_cast<float>(surface.inliers) / static_cast<float>(surface.points) : 0.f;
+				_land_site_ok = _land_site_ok && surface.valid && surface.slope <= slope_limit
+						&& surface.roughness <= _param_mpc_lnd_rough.get() && on_plane >= 0.9f;
+			}
+
+			if (!_land_site_ok || hrt_elapsed_time(&_land_site_arrival) > 5_s) {
+				nextLandingSiteCandidate(); // rejected, or no measurement
+
+			} else if (_land_site_samples >= 5) {
+				_land_site = LandingSite::Descend;
+				events::send<float>(events::ID("flight_task_land_site_found"), events::Log::Info,
+						    "Landing site found {1:.0m} from the planned point",
+						    (_land_site_target - _land_site_origin).norm());
+			}
+
+			break;
+		}
+
+	case LandingSite::Manual:
+		vertical_speed = 0.f;
+		break;
+	}
 }
