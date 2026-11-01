@@ -315,7 +315,7 @@ param set-default MIS_TAKEOFF_ALT 30
 param set-default MPC_YAW_MODE 4
 
 param set-default WV_EN 0
-param set-default MPC_TILTMAX_AIR 16
+param set-default MPC_TILTMAX_AIR 18  # back-transition brake pitch up to ~15 deg (bt_sim) plus margin
 param set-default MPC_TILTMAX_LND 5
 param set-default MPC_XY_P 0.25
 param set-default MPC_XY_CRUISE 20.0  # MC leg after a back transition that stops short (HQ01 run 5: 2.7 km at 10 m/s = 4.5 min)
@@ -385,8 +385,8 @@ param set-default MPC_Z_VEL_MAX_UP 7.0  # caps the transition climb; MC take-off
 param set-default VT_B_TRANS_VZ 7.0  # descend during the back transition above 50 kt (new; evaluation 7 m/s)
 param set-default VT_B_TRANS_VZLO 3.0  # below 30 kt: 0.23 vh (vh 13 m/s). V-22 limit 800 fpm below 40 KTAS = 0.20 vh, VRS onset ~2000 fpm = 0.5 vh
 param set-default VT_B_TRANS_HMIN 30  # level off 30 m above the pad, then vertical landing
-param set-default VT_B_VZ_PITCH 8.0  # deg per m/s of climb: pitch down in the back transition (new; +56 m without, +32 m with 3)
-param set-default VT_B_DEC_MSS 1.0  # 0.1 g braking (evaluation brake_g)
+param set-default VT_B_DEC_MSS 2.0  # 0.2 g braking: back-transition-only sim optimum (mk7_mission tools/bt_sim.py; 0.25 g overshot 47 m at +-20 % model error)
+param set-default VT_B_DEC_I 0.3  # with VT_BFF_EN: decel trim gain [1/s] on top of the feed-forward (0 left 120 m overshoot at +-20 % model error)
 param set-default FW_T_CLMB_R_SP 7.0  # auto climb rate (default 3 was the WK01 climb limit, pusher at 47 %)
 param set-default FW_T_CLMB_MAX 8.0
 param set-default FW_T_SINK_R_SP 7.0  # auto descent rate
@@ -405,6 +405,8 @@ param set-default MPC_ACC_DOWN_MAX 1.5
 param set-default VT_F_YAW_HOLD 1  # hold heading in the front transition (new; EM3 drifted 16 deg -> 20 deg bank at FW entry, test 5)
 param set-default MIS_YAW_ERR 5  # align the nose with the first leg before the transition (was 12 deg)
 param set-default MIS_YAW_TMT 30  # up to ~100 deg at MPC_YAWRAUTO_MAX 10 deg/s; 10 s timed out and triggered RTL (test 6)
+param set-default MIS_TKO_YAW_NX 1  # turn to the first leg while climbing to the transition height (new; no hover turn at the top)
+param set-default NAV_MC_ALT_RAD 5  # takeoff accepted 5 m below 30 m; the climbing transition carries on (25 -> 29.4 m took 20 s, test_ff_1)
 param set-default FW_P_LIM_MAX 15  # comfort: test 5 zoom-climbed at 22 deg after FW entry (default 30)
 param set-default MPC_YAWRAUTO_ACC 2  # deg/s^2
 
@@ -417,4 +419,21 @@ param set-default CA_SV_CS5_SPOIL -1.0
 param set-default CA_SV_CS6_SPOIL -1.0
 param set-default CA_SV5_SLEW 3.0  # s for the full range: the lift dump comes in over ~2 s
 param set-default CA_SV6_SLEW 3.0
-param set-default VT_B_SPOILER 0.6  # -27 deg: ~0.85 m^2 drag area, CL -0.66 on the 6 m^2 flap span
+param set-default VT_B_SPOILER 1.0  # -45 deg (full) when VT_BFF_EN is off; with it the brake law sets the spoiler
+
+# Feed-forward back-transition brake (src/lib/vtol_brake). Pitch from the force balance, wing lift fed to the
+# rotors, spoiler sets the deceleration; replaces the climb-triggered pitch-down (VT_B_VZ_PITCH, removed).
+# Model values = teTra_mk-7_EM3/model.sdf: wing S 12 m^2 x CLa 4.744; spoilers 2 x 3 m^2 x 1.4/rad x 45 deg;
+# FlaperonDrag 2 x 0.9 m^2 x sin 45; parasite CD0 0.0065 x 12 + base_cda 0.53 (evaluation CD0) + PropellerAero
+# windmilling 0.12 x 2.54 m^2; S pi AR e.
+param set-default VT_BFF_EN 1
+param set-default VT_BFF_MASS 1560
+param set-default VT_BFF_SCLA 56.9
+param set-default VT_BFF_SPCL 6.6
+param set-default VT_BFF_SPCD 1.27
+param set-default VT_BFF_CDA 0.91
+param set-default VT_BFF_KIND 170.9
+param set-default VT_BFF_RMIN 0.35  # rotors keep >= 35 % of the weight: 0.25 climbed 2.4 m at +20 % lift error (bt_sim)
+param set-default VT_BFF_AMAX 14  # deg, stall 19.4
+param set-default VT_BFF_PRATE 6  # deg/s pitch-setpoint limit (sim peak 2.8 deg/s)
+param set-default VT_BFF_VEXIT 3  # end the back transition at 3 m/s over the pad (MPC_XY_CRUISE 20 overshot the pad in MC)
