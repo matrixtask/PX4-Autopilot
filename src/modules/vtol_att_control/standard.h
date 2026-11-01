@@ -82,6 +82,7 @@ private:
 	// Mk-7 smooth lift->wing handoff: fade the lift-rotor attitude+thrust over ~2 s after FW entry instead of
 	// an abrupt cut (the abrupt stop momentarily exceeded the small v6 ailerons' roll authority -> roll-over).
 	hrt_abstime _fw_mode_entry_time{0};
+	float _front_transition_end_thrust{0.f}; ///< lift-rotor collective (body z, up < 0) at the end of the front transition
 
 	// Feed-forward back-transition brake (VT_BFF_EN, FlightTaskTransition): pitch comes with the MC attitude setpoint
 	uORB::Subscription _brake_setpoint_sub{ORB_ID(vtol_brake_setpoint)};
@@ -97,6 +98,7 @@ private:
 					(ParamFloat<px4::params::VT_B_RAMP_MIN>) _param_vt_b_ramp_min,
 					(ParamFloat<px4::params::VT_LIFT_HND_V>) _param_vt_lift_hnd_v,
 					(ParamFloat<px4::params::VT_LIFT_HND_THR>) _param_vt_lift_hnd_thr,
+					(ParamFloat<px4::params::VT_LIFT_HND_RT>) _param_vt_lift_hnd_rt,
 					(ParamFloat<px4::params::VT_FW_RDIFF>) _param_vt_fw_rdiff,
 					(ParamFloat<px4::params::VT_FW_MC_THR>) _param_vt_fw_mc_thr,
 					(ParamBool<px4::params::VT_BFF_EN>) _param_vt_bff_en,

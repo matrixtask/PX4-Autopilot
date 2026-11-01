@@ -414,6 +414,10 @@ void Standard::fill_actuator_outputs()
 		_thrust_setpoint_0->xyz[0] = _pusher_throttle;
 		_fw_mode_entry_time = 0; // reset the FW-handoff ramp while still transitioning
 
+		if (_vtol_mode == vtol_mode::TRANSITION_TO_FW && PX4_ISFINITE(_thrust_setpoint_0->xyz[2])) {
+			_front_transition_end_thrust = _thrust_setpoint_0->xyz[2];
+		}
+
 		break;
 
 	case vtol_mode::FW_MODE:
@@ -470,6 +474,14 @@ void Standard::fill_actuator_outputs()
 			    && cas_fw > 0.0f && cas_fw < vL_fw && t_in_fw < 25.0f) {
 				const float floor = math::constrain(1.0f - (cas_fw / vL_fw) * (cas_fw / vL_fw), 0.0f, 1.0f);
 				_thrust_setpoint_0->xyz[2] = math::min(_thrust_setpoint_0->xyz[2], -floor * _param_vt_lift_hnd_thr.get());
+			}
+
+			// VT_LIFT_HND_RT: release the lift rotors from the collective they had at the end of the (climbing) front
+			// transition down to the schedule above over this time, instead of stepping (HQ01: 0.52 -> 0.21 in one
+			// step, the vehicle went from 3.7 m/s climb to 3.6 m/s sink and rolled 9.5 deg/s at the handoff).
+			if (_param_vt_lift_hnd_rt.get() > FLT_EPSILON && t_in_fw < _param_vt_lift_hnd_rt.get()) {
+				const float fade = 1.f - t_in_fw / _param_vt_lift_hnd_rt.get();
+				_thrust_setpoint_0->xyz[2] = math::min(_thrust_setpoint_0->xyz[2], _front_transition_end_thrust * fade);
 			}
 		}
 

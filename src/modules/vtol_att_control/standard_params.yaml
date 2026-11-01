@@ -77,6 +77,19 @@ parameters:
       max: 80.0
       increment: 1.0
       decimal: 1
+    VT_LIFT_HND_RT:
+      description:
+        short: Lift-rotor release time after the front transition
+        long: |-
+          After the front transition completes, the lift-rotor collective fades linearly from its value at the end
+          of the transition (a climbing transition leaves the rotors well above the VT_LIFT_HND_THR schedule) down
+          to that schedule over this time, instead of stepping. 0 = step (previous behaviour).
+      type: float
+      default: 0.0
+      unit: s
+      min: 0
+      max: 10
+      decimal: 1
     VT_LIFT_HND_THR:
       description:
         short: Lift-rotor collective at the FW handoff (hover-thrust scale) [-]
