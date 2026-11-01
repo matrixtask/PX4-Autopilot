@@ -45,7 +45,11 @@
 #include <uORB/topics/parameter_update.h>
 #include <uORB/topics/vehicle_status.h>
 #include <uORB/topics/position_setpoint_triplet.h>
+#include <uORB/topics/airspeed_validated.h>
+#include <uORB/topics/vtol_brake_setpoint.h>
+#include <uORB/Publication.hpp>
 #include <drivers/drv_hrt.h>
+#include <lib/vtol_brake/BackTransitionBrake.hpp>
 
 using namespace time_literals;
 
@@ -67,6 +71,8 @@ private:
 
 	uORB::SubscriptionData<vehicle_status_s> _sub_vehicle_status{ORB_ID(vehicle_status)};
 	uORB::SubscriptionData<position_setpoint_triplet_s> _sub_position_sp_triplet{ORB_ID(position_setpoint_triplet)};
+	uORB::SubscriptionData<airspeed_validated_s> _sub_airspeed{ORB_ID(airspeed_validated)};
+	uORB::Publication<vtol_brake_setpoint_s> _brake_setpoint_pub{ORB_ID(vtol_brake_setpoint)};
 
 	float _param_fw_psp_off{0.f};
 	float _param_vt_b_dec_i{0.f};
@@ -77,6 +83,23 @@ private:
 	float _param_vt_b_trans_hmin{0.f};  ///< lowest height above the back-transition target [m]
 	int32_t _param_vt_f_yaw_hold{0};     ///< hold the start heading during the front transition
 	float _transition_yaw{NAN};          ///< heading at the start of the front transition [rad]
+
+	// Feed-forward back-transition brake (VT_BFF_*, lib/vtol_brake)
+	static constexpr float kBrakeDecelCap = 1.25f;   ///< decel demand <= 1.25 VT_B_DEC_MSS (bt_sim: 2x saturates the brake)
+	static constexpr float kBrakeJerk = 1.5f;        ///< [m/s^3] ramp-in of the decel demand (comfort)
+	static constexpr float kBrakeTrimMin = -0.5f;    ///< [m/s^2] limits of the decel trim integrator
+	static constexpr float kBrakeTrimMax = 1.5f;
+	static constexpr float kBrakeDecelFilterTimeConstant = 0.3f;
+	bool _brake_ff_enabled{false};
+	vtol_brake::Params _brake_params{};
+	float _brake_pitch_rate{0.f};        ///< [rad/s] pitch-setpoint rate limit
+	int32_t _param_mpc_acc_decouple{1};
+	float _brake_pitch{NAN};             ///< [rad] rate-limited pitch command
+	float _brake_trim{0.f};              ///< [m/s^2] decel trim (VT_B_DEC_I) on top of the feed-forward
+	float _brake_lift{0.f};              ///< [N] predicted wing lift
+	float _brake_sink_max{INFINITY};     ///< [m/s] sink that still leaves the angle of attack to brake
+	float _brake_time{0.f};              ///< [s] since the back transition started
+	AlphaFilter<float> _brake_decel_filter{kBrakeDecelFilterTimeConstant};
 
 	static constexpr float kAltitudeCaptureTimeConstant = 5.0f; ///< [s] climb/descent rate fades out near the target
 	static constexpr float kLowSpeedSink = 15.4f;   ///< [m/s] (30 kt) below this only VT_B_TRANS_VZLO is allowed
@@ -89,5 +112,8 @@ private:
 	float _decel_error_bt_int{0.f}; ///< Backtransition deceleration error integrator value
 
 	float computeBackTransitionTiltSetpoint();
+	float computeBackTransitionDecelSetpoint() const;
+	float computeBackTransitionBrake();
+	void loadBrakeParams();
 	float computeVerticalVelocityTarget() const;
 };

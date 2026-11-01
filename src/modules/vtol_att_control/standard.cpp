@@ -98,14 +98,17 @@ void Standard::update_vtol_state()
 		} else if (_vtol_mode == vtol_mode::TRANSITION_TO_MC) {
 			// speed exit condition: use ground if valid, otherwise airspeed
 			bool exit_backtransition_speed_condition = false;
+			// The feed-forward brake stops the vehicle at the landing point; ending at MPC_XY_CRUISE (EM3 20 m/s)
+			// would leave the MC controller braking at MPC_ACC_HOR and overshooting the point.
+			const float exit_speed = brakeFeedForwardActive() ? _param_vt_bff_vexit.get() : _param_mpc_xy_cruise.get();
 
 			if (_local_pos->v_xy_valid) {
 				const Dcmf R_to_body(Quatf(_v_att->q).inversed());
 				const Vector3f vel = R_to_body * Vector3f(_local_pos->vx, _local_pos->vy, _local_pos->vz);
-				exit_backtransition_speed_condition = vel(0) < _param_mpc_xy_cruise.get();
+				exit_backtransition_speed_condition = vel(0) < exit_speed;
 
 			} else if (PX4_ISFINITE(_attc->get_calibrated_airspeed())) {
-				exit_backtransition_speed_condition = _attc->get_calibrated_airspeed() < _param_mpc_xy_cruise.get();
+				exit_backtransition_speed_condition = _attc->get_calibrated_airspeed() < exit_speed;
 			}
 
 			const bool exit_backtransition_time_condition = _time_since_trans_start > _param_vt_b_trans_dur.get();
@@ -271,29 +274,32 @@ void Standard::update_transition_state()
 
 		mc_weight = math::constrain(mc_weight, 0.0f, 1.0f);
 
+		const bool brake_ff = brakeFeedForwardActive();
+
+		if (brake_ff) {
+			// Feed-forward brake: the rotor thrust already excludes the predicted wing lift (FlightTaskTransition),
+			// so it must not be scaled down again; only the attitude authority is ramped in.
+			_mc_throttle_weight_override = true;
+		}
+
 		if (_v_control_mode->flag_control_climb_rate_enabled) {
 			// control backtransition deceleration using pitch.
 			const float pitch_mc = Eulerf(Quatf(_mc_virtual_att_sp->q_d)).theta();
 
-			// (2) GRADUAL WING UNLOAD: blend pitch FW->MC on the AIRSPEED lift schedule (lift_floor),
-			// not the fast mc_weight ramp, so the wing AoA/lift hands off CONTINUOUSLY to the rotors as
-			// speed bleeds (no abrupt pitch step -> no sudden lift loss -> no free-fall dip). The DLC
-			// flaperon fills the residual gap. Enabled only when VT_LIFT_HND_V > 0.
-			if (_param_vt_lift_hnd_v.get() > FLT_EPSILON) {
+			if (brake_ff) {
+				// The MC attitude setpoint carries the brake pitch (tilt from the force balance): fly it directly.
+				pitch_body = pitch_mc;
+
+			} else if (_param_vt_lift_hnd_v.get() > FLT_EPSILON) {
+				// (2) GRADUAL WING UNLOAD: blend pitch FW->MC on the AIRSPEED lift schedule (lift_floor),
+				// not the fast mc_weight ramp, so the wing AoA/lift hands off CONTINUOUSLY to the rotors as
+				// speed bleeds (no abrupt pitch step -> no sudden lift loss -> no free-fall dip). The DLC
+				// flaperon fills the residual gap. Enabled only when VT_LIFT_HND_V > 0.
 				const float pitch_fw = Eulerf(Quatf(_fw_virtual_att_sp->q_d)).theta();
 				pitch_body = lift_floor * pitch_mc + (1.0f - lift_floor) * pitch_fw;
 
 			} else {
 				pitch_body = pitch_mc;
-			}
-
-			// (3) BALLOON SUPPRESSION: pitch down while actually climbing, weighted by the wing's share of the lift.
-			// Without it a back transition started at 72 m/s climbed 56 m. Only a real climb counts: a sink slower
-			// than a descending setpoint (VT_B_TRANS_VZ) must not pitch down, that would cancel the braking.
-			if (_param_vt_b_vz_pitch.get() > FLT_EPSILON && PX4_ISFINITE(_local_pos->vz)) {
-				const float climb_rate = math::max(-_local_pos->vz, 0.f); // NED
-				const float wing_share = 1.0f - lift_floor;
-				pitch_body -= wing_share * math::min(math::radians(_param_vt_b_vz_pitch.get()) * climb_rate, math::radians(10.f));
 			}
 
 			// blend roll setpoint between FW and MC
@@ -315,7 +321,18 @@ void Standard::update_transition_state()
 	_mc_roll_weight = mc_weight;
 	_mc_pitch_weight = mc_weight;
 	_mc_yaw_weight = mc_weight;
-	_mc_throttle_weight = mc_weight;
+	_mc_throttle_weight = _mc_throttle_weight_override ? 1.f : mc_weight;
+	_mc_throttle_weight_override = false;
+}
+
+bool Standard::brakeFeedForwardActive()
+{
+	if (!_param_vt_bff_en.get()) {
+		return false;
+	}
+
+	_brake_setpoint_sub.update(&_brake_setpoint);
+	return _vtol_mode == vtol_mode::TRANSITION_TO_MC && hrt_elapsed_time(&_brake_setpoint.timestamp) < 500_ms;
 }
 
 void Standard::update_mc_state()

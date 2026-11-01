@@ -317,6 +317,9 @@ parameters:
     VT_B_DEC_I:
       description:
         short: Backtransition deceleration setpoint to tilt I gain
+        long: |-
+          With VT_BFF_EN = 1 this is the gain of the integral trim on the deceleration error, added to the
+          feed-forward deceleration demand (unit 1/s, trim limited to -0.5 .. +1.5 m/s^2).
       type: float
       default: 0.1
       unit: rad s/m
@@ -401,3 +404,117 @@ parameters:
       max: 1
       decimal: 1
       increment: 0.1
+    VT_BFF_EN:
+      description:
+        short: Feed-forward back-transition brake
+        long: |-
+          Standard VTOL with spoilers, auto modes. The pitch, the spoiler and the rotor thrust come from a force
+          balance (src/lib/vtol_brake) instead of waiting for the deceleration error / a climb to appear:
+          the rotors take a speed-scheduled share of the weight (1 - (CAS/VT_LIFT_HND_V)^2, at least VT_BFF_RMIN),
+          the pitch makes the wing carry the rest, the spoiler sets the deceleration to VT_B_DEC_MSS, and the
+          predicted wing lift is fed forward to the rotors. Nose rises as the speed drops; the sink allowed by
+          VT_B_TRANS_VZ is limited to what the remaining angle of attack can absorb. Requires VT_LIFT_HND_V > 0.
+          The VT_BFF_* model values come from the airframe aerodynamics (wing, spoiler, drag).
+      type: boolean
+      default: 0
+    VT_BFF_MASS:
+      description:
+        short: Brake model mass
+      type: float
+      default: 1560.0
+      unit: kg
+      min: 1
+      max: 10000
+      decimal: 0
+    VT_BFF_SCLA:
+      description:
+        short: Brake model wing area times lift slope
+        long: S * dCL/dalpha of the wing.
+      type: float
+      default: 56.9
+      unit: m^2
+      min: 0.1
+      max: 500
+      decimal: 1
+    VT_BFF_SPCL:
+      description:
+        short: Brake model lift loss at full spoiler
+        long: Lift removed at full spoiler, as an equivalent area (lift = q * area).
+      type: float
+      default: 6.6
+      unit: m^2
+      min: 0
+      max: 100
+      decimal: 2
+    VT_BFF_SPCD:
+      description:
+        short: Brake model drag area at full spoiler
+        long: Spoiler drag at full deflection as an area (drag = q * area); scales with sin(deflection), full = 45 deg.
+      type: float
+      default: 1.27
+      unit: m^2
+      min: 0
+      max: 50
+      decimal: 2
+    VT_BFF_CDA:
+      description:
+        short: Brake model parasite drag area
+        long: Airframe parasite drag plus the drag of the idle (windmilling) pusher propeller, as an area.
+      type: float
+      default: 0.91
+      unit: m^2
+      min: 0
+      max: 50
+      decimal: 2
+    VT_BFF_KIND:
+      description:
+        short: Brake model induced-drag area
+        long: S * pi * AR * e of the wing; induced drag = L^2 / (q * area).
+      type: float
+      default: 170.9
+      unit: m^2
+      min: 1
+      max: 5000
+      decimal: 1
+    VT_BFF_RMIN:
+      description:
+        short: Least rotor share of the weight in the back transition
+        long: |-
+          Keeps the lift rotors loaded from the start (above MPC_THR_MIN), so model error cannot make the wing lift
+          more than the weight (EM3 back-transition sim: 0.25 climbed 2.4 m with +20 % lift error, 0.35 below 1 m).
+      type: float
+      default: 0.35
+      min: 0
+      max: 1
+      decimal: 2
+    VT_BFF_AMAX:
+      description:
+        short: Wing angle-of-attack cap in the back transition
+        long: Applies while the wing carries weight; fades out between 25 and 10 m/s.
+      type: float
+      default: 14.0
+      unit: deg
+      min: 0
+      max: 30
+      decimal: 1
+    VT_BFF_PRATE:
+      description:
+        short: Pitch-setpoint rate limit in the back transition
+      type: float
+      default: 6.0
+      unit: deg/s
+      min: 0.5
+      max: 30
+      decimal: 1
+    VT_BFF_VEXIT:
+      description:
+        short: Back-transition exit speed with the feed-forward brake
+        long: |-
+          The back transition ends below this ground speed (instead of MPC_XY_CRUISE), so the brake stops the vehicle
+          at the landing point and the MC controller does not have to brake from cruise speed.
+      type: float
+      default: 3.0
+      unit: m/s
+      min: 0.5
+      max: 30
+      decimal: 1

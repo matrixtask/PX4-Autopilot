@@ -64,6 +64,7 @@
 #include <uORB/PublicationMulti.hpp>
 #include <uORB/Subscription.hpp>
 #include <uORB/SubscriptionCallback.hpp>
+#include <uORB/topics/vtol_brake_setpoint.h>
 #include <uORB/topics/action_request.h>
 #include <uORB/topics/airspeed_validated.h>
 #include <uORB/topics/home_position.h>
@@ -176,6 +177,8 @@ private:
 
 	uORB::Publication<normalized_unsigned_setpoint_s>	_flaps_setpoint_pub{ORB_ID(flaps_setpoint)};
 	uORB::Publication<normalized_unsigned_setpoint_s>	_spoilers_setpoint_pub{ORB_ID(spoilers_setpoint)};
+	uORB::Subscription _brake_setpoint_sub{ORB_ID(vtol_brake_setpoint)};   ///< feed-forward back-transition brake
+	vtol_brake_setpoint_s _brake_setpoint{};
 	uORB::Publication<vehicle_attitude_setpoint_s>		_vehicle_attitude_sp_pub{ORB_ID(vehicle_attitude_setpoint)};
 	uORB::PublicationMulti<vehicle_thrust_setpoint_s>	_vehicle_thrust_setpoint0_pub{ORB_ID(vehicle_thrust_setpoint)};
 	uORB::PublicationMulti<vehicle_thrust_setpoint_s>	_vehicle_thrust_setpoint1_pub{ORB_ID(vehicle_thrust_setpoint)};
@@ -250,6 +253,7 @@ private:
 		(ParamInt<px4::params::VT_TYPE>) _param_vt_type,
 		(ParamFloat<px4::params::VT_SPOILER_MC_LD>) _param_vt_spoiler_mc_ld,
 		(ParamFloat<px4::params::VT_B_SPOILER>) _param_vt_b_spoiler,
+		(ParamBool<px4::params::VT_BFF_EN>) _param_vt_bff_en,
 		(ParamFloat<px4::params::VT_DLC_GAIN>) _param_vt_dlc_gain,
 		(ParamInt<px4::params::VT_FW_LK_MC>) _param_vt_fw_lk_mc,
 		(ParamBool<px4::params::FW_USE_AIRSPD>) _param_fw_use_airspd

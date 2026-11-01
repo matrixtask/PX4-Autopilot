@@ -498,19 +498,26 @@ VtolAttitudeControl::Run()
 			// throttle weight to fill the rotor->wing lift gap. 4*w*(1-w) peaks mid-fade, 0 at
 			// the MC and FW ends (snap-continuous); 0 in cruise (this block is skipped in FW).
 			float dlc_flaps = 0.f;
+
 			if (_vtol_vehicle_status.vehicle_vtol_state == vtol_vehicle_status_s::VEHICLE_VTOL_STATE_TRANSITION_TO_FW
 			    && _vtol_type != nullptr) {
 				float x = 1.f - _vtol_type->get_mc_throttle_weight();  // fade progress: 0=MC, 1=full cut
+
 				if (x < 0.f) { x = 0.f; }
+
 				if (x > 1.f) { x = 1.f; }
+
 				// 9th-order minimum-snap step P9(x)=x^5(126-420x+540x^2-315x^3+70x^4): 0->1,
 				// MAX at the final rotor cut (x=1) where the lift gap is worst; p',p'''' vanish
 				// at both ends => snap-continuous (no jerk step at the handoff).
-				const float P9 = x*x*x*x*x*(126.f + x*(-420.f + x*(540.f + x*(-315.f + x*70.f))));
+				const float P9 = x * x * x * x * x * (126.f + x * (-420.f + x * (540.f + x * (-315.f + x * 70.f))));
 				dlc_flaps = _param_vt_dlc_gain.get() * P9;
+
 				if (dlc_flaps < 0.f) { dlc_flaps = 0.f; }
+
 				if (dlc_flaps > 1.f) { dlc_flaps = 1.f; }
 			}
+
 			// slew-limit so the post-completion / cruise return to 0 stays continuous
 			const float dlc_dt = math::constrain((hrt_absolute_time() - _dlc_last_t) * 1e-6f, 0.001f, 0.1f);
 			_dlc_last_t = hrt_absolute_time();
@@ -532,6 +539,13 @@ VtolAttitudeControl::Run()
 			// brake and descend at once (Mk-7: without it the wing kept carrying the weight down to ~30 m/s).
 			if (_vtol_vehicle_status.vehicle_vtol_state == vtol_vehicle_status_s::VEHICLE_VTOL_STATE_TRANSITION_TO_MC) {
 				spoiler_control = _param_vt_b_spoiler.get();
+
+				// Feed-forward brake (VT_BFF_EN): the spoiler is what makes up the deceleration demand
+				_brake_setpoint_sub.update(&_brake_setpoint);
+
+				if (_param_vt_bff_en.get() && hrt_elapsed_time(&_brake_setpoint.timestamp) < 500_ms) {
+					spoiler_control = math::constrain(_brake_setpoint.spoiler, 0.f, 1.f);
+				}
 			}
 
 			normalized_unsigned_setpoint_s spoiler_setpoint;

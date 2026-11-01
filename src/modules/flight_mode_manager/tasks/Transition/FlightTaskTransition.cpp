@@ -38,6 +38,7 @@
 #include "FlightTaskTransition.hpp"
 
 #include <lib/geo/geo.h>
+#include <uORB/topics/vehicle_attitude.h>
 
 using namespace matrix;
 
@@ -51,6 +52,37 @@ FlightTaskTransition::FlightTaskTransition()
 	param_get(param_find("VT_B_TRANS_VZLO"), &_param_vt_b_trans_vzlo);
 	param_get(param_find("VT_B_TRANS_HMIN"), &_param_vt_b_trans_hmin);
 	param_get(param_find("VT_F_YAW_HOLD"), &_param_vt_f_yaw_hold);
+	param_get(param_find("MPC_ACC_DECOUPLE"), &_param_mpc_acc_decouple);
+	loadBrakeParams();
+}
+
+void FlightTaskTransition::loadBrakeParams()
+{
+	// VT_BFF_* (vtol_att_control_params.yaml). Model constants without a parameter keep the Params defaults.
+	int32_t enabled = 0;
+	param_get(param_find("VT_BFF_EN"), &enabled);
+	_brake_ff_enabled = (enabled == 1);
+
+	float deg = 0.f;
+	param_get(param_find("VT_BFF_MASS"), &_brake_params.mass);
+	param_get(param_find("VT_BFF_SCLA"), &_brake_params.scla);
+	param_get(param_find("VT_BFF_SPCL"), &_brake_params.spcl);
+	param_get(param_find("VT_BFF_SPCD"), &_brake_params.spcd);
+	param_get(param_find("VT_BFF_CDA"), &_brake_params.cda);
+	param_get(param_find("VT_BFF_KIND"), &_brake_params.kind);
+	param_get(param_find("VT_BFF_RMIN"), &_brake_params.r_min);
+	param_get(param_find("VT_LIFT_HND_V"), &_brake_params.v_lift);
+
+	if (param_get(param_find("VT_BFF_AMAX"), &deg) == PX4_OK) { _brake_params.alpha_max = math::radians(deg); }
+
+	if (param_get(param_find("VT_BFF_PRATE"), &deg) == PX4_OK) { _brake_pitch_rate = math::radians(deg); }
+
+	if (param_get(param_find("MPC_TILTMAX_AIR"), &deg) == PX4_OK) { _brake_params.pitch_max = math::radians(deg); }
+
+	// the law needs a wing-borne speed reference; without one (VT_LIFT_HND_V 0) it would put all weight on the wing
+	if (_brake_params.v_lift < 1.f || _brake_params.mass < 1.f) {
+		_brake_ff_enabled = false;
+	}
 }
 
 bool FlightTaskTransition::activate(const trajectory_setpoint_s &last_setpoint)
@@ -73,6 +105,16 @@ bool FlightTaskTransition::activate(const trajectory_setpoint_s &last_setpoint)
 
 	} else {
 		_gear.landing_gear = landing_gear_s::GEAR_DOWN;
+
+		// back transition: the brake pitch starts from the current (wing-borne) pitch, no step
+		uORB::SubscriptionData<vehicle_attitude_s> attitude{ORB_ID(vehicle_attitude)};
+		const matrix::Quatf q{attitude.get().q};
+		_brake_pitch = q.isAllFinite() ? matrix::Eulerf(q).theta() : NAN;
+		_brake_trim = 0.f;
+		_brake_lift = 0.f;
+		_brake_sink_max = INFINITY;
+		_brake_time = 0.f;
+		_brake_decel_filter.reset(0.f);
 	}
 
 	return ret;
@@ -83,6 +125,7 @@ bool FlightTaskTransition::updateInitialize()
 	bool ret = FlightTask::updateInitialize();
 	_sub_vehicle_status.update();
 	_sub_position_sp_triplet.update();
+	_sub_airspeed.update();
 	return ret;
 }
 
@@ -107,17 +150,32 @@ bool FlightTaskTransition::update()
 	float tilt_setpoint = math::radians(_param_fw_psp_off);
 	Vector2f horizontal_acceleration_direction;
 
+	// Vertical acceleration feed-forward: g in the tilt computation unless MPC_ACC_DECOUPLE is off (see below)
+	float vertical_specific_force = CONSTANTS_ONE_G;
+
 	if (!_sub_vehicle_status.get().in_transition_to_fw) {
-		tilt_setpoint = computeBackTransitionTiltSetpoint();
 		const Vector2f velocity_xy{_velocity};
 		horizontal_acceleration_direction = -velocity_xy.unit_or_zero();
+
+		if (_brake_ff_enabled) {
+			// Feed-forward brake: pitch from the force balance, wing lift fed to the rotors (they make W - L).
+			tilt_setpoint = computeBackTransitionBrake();
+			_acceleration_setpoint(2) = _brake_lift / _brake_params.mass; // NED: less rotor thrust by the wing lift
+
+			if (_param_mpc_acc_decouple == 0) {
+				vertical_specific_force = CONSTANTS_ONE_G - _acceleration_setpoint(2); // PositionControl tilt uses g - a_z
+			}
+
+		} else {
+			tilt_setpoint = computeBackTransitionTiltSetpoint();
+		}
 
 	} else {
 		// Forward transition: use heading direction
 		horizontal_acceleration_direction = Dcm2f(_yaw) * Vector2f(-1.0f, 0.0f);
 	}
 
-	_acceleration_setpoint.xy() = tanf(tilt_setpoint) * CONSTANTS_ONE_G * horizontal_acceleration_direction;
+	_acceleration_setpoint.xy() = tanf(tilt_setpoint) * vertical_specific_force * horizontal_acceleration_direction;
 
 	// Upstream commands zero yaw rate only, so the heading drifts while the MC yaw authority is still needed
 	// (Mk-7 EM3: +16 deg from the pusher reaction torque, then a 20 deg bank and 34 m sink at FW entry).
@@ -177,14 +235,23 @@ float FlightTaskTransition::computeVerticalVelocityTarget() const
 	// started at 72 m/s, descended 295 m at 7 m/s and was still at 72 m/s after 80 s (SITL HQ01 run 4).
 	const float speed = matrix::Vector2f(_velocity).norm();
 	const float blend = math::constrain((speed - kLowSpeedSink) / (kFullSpeedSink - kLowSpeedSink), 0.f, 1.f);
-	const float fade = 1.f - math::constrain((speed - kFullSinkMaxSpeed) / (kNoSinkSpeed - kFullSinkMaxSpeed), 0.f, 1.f);
-	const float sink_limit = (_param_vt_b_trans_vzlo + (_param_vt_b_trans_vz - _param_vt_b_trans_vzlo) * blend) * fade;
+	float sink_limit = _param_vt_b_trans_vzlo + (_param_vt_b_trans_vz - _param_vt_b_trans_vzlo) * blend;
+
+	if (_brake_ff_enabled) {
+		// The brake law knows how much descent the braking can absorb (angle of attack left over).
+		sink_limit = math::min(sink_limit, _brake_sink_max);
+
+	} else {
+		sink_limit *= 1.f - math::constrain((speed - kFullSinkMaxSpeed) / (kNoSinkSpeed - kFullSinkMaxSpeed), 0.f, 1.f);
+	}
+
 	const float floor_alt = land.alt + _param_vt_b_trans_hmin;
 	return math::constrain((altitude - floor_alt) / kAltitudeCaptureTimeConstant, 0.f, sink_limit);
 }
 
-float FlightTaskTransition::computeBackTransitionTiltSetpoint()
+float FlightTaskTransition::computeBackTransitionDecelSetpoint() const
 {
+	// Deceleration that stops the vehicle at the back-transition end point (upstream logic, unchanged)
 	const Vector2f position_xy{_position};
 	const Vector2f velocity_xy{_velocity};
 	const Vector2f velocity_xy_direction =
@@ -215,6 +282,15 @@ float FlightTaskTransition::computeBackTransitionTiltSetpoint()
 		deceleration_setpoint = math::min(deceleration_setpoint, 2.f * _param_vt_b_dec_mss);
 	}
 
+	return deceleration_setpoint;
+}
+
+float FlightTaskTransition::computeBackTransitionTiltSetpoint()
+{
+	const Vector2f velocity_xy{_velocity};
+	const Vector2f velocity_xy_direction = velocity_xy.unit_or_zero();
+	const float deceleration_setpoint = computeBackTransitionDecelSetpoint();
+
 	const Vector2f acceleration_xy_raw{_sub_vehicle_local_position.get().ax, _sub_vehicle_local_position.get().ay};
 	const Vector2f acceleration_xy = _accel_filter.update(acceleration_xy_raw, _deltatime);
 	const float deceleration = -acceleration_xy.dot(velocity_xy_direction); // Zero when velocity invalid
@@ -224,4 +300,68 @@ float FlightTaskTransition::computeBackTransitionTiltSetpoint()
 	_decel_error_bt_int += (_param_vt_b_dec_i * deceleration_error) * _deltatime;
 	_decel_error_bt_int = math::constrain(_decel_error_bt_int, 0.f, kDecelerationIntegratorLimit);
 	return _decel_error_bt_int;
+}
+
+float FlightTaskTransition::computeBackTransitionBrake()
+{
+	// Feed-forward brake (lib/vtol_brake): returns the pitch [rad]; sets the wing lift for the rotor feed-forward,
+	// the sink limit for computeVerticalVelocityTarget() and publishes the setpoint for vtol_att_control (spoiler).
+	const Vector2f velocity_xy{_velocity};
+
+	if (!velocity_xy.isAllFinite() || !PX4_ISFINITE(_velocity(2))) {
+		_brake_lift = 0.f;
+		return computeBackTransitionTiltSetpoint();
+	}
+
+	_brake_time += _deltatime;
+	const Vector2f velocity_xy_direction = velocity_xy.unit_or_zero();
+
+	// Demand: stop at the end point, capped and jerk-limited (comfort), plus an integral trim for model error.
+	const float decel_setpoint = math::min(computeBackTransitionDecelSetpoint(), kBrakeDecelCap * _param_vt_b_dec_mss,
+					       kBrakeJerk * _brake_time);
+	const Vector2f acceleration_xy{_sub_vehicle_local_position.get().ax, _sub_vehicle_local_position.get().ay};
+	const float decel = _brake_decel_filter.update(-acceleration_xy.dot(velocity_xy_direction), _deltatime);
+
+	if (PX4_ISFINITE(decel)) {
+		_brake_trim = math::constrain(_brake_trim + _param_vt_b_dec_i * (decel_setpoint - decel) * _deltatime,
+					      kBrakeTrimMin, kBrakeTrimMax);
+	}
+
+	const float demand = decel_setpoint + _brake_trim;
+
+	// Dynamic pressure from calibrated airspeed (sea-level density in the law); ground speed without a sensor.
+	float speed = velocity_xy.norm();
+	const airspeed_validated_s &airspeed = _sub_airspeed.get();
+
+	if (hrt_elapsed_time(&airspeed.timestamp) < 1_s && PX4_ISFINITE(airspeed.calibrated_airspeed_m_s)
+	    && airspeed.airspeed_source != airspeed_validated_s::SOURCE_DISABLED) {
+		speed = airspeed.calibrated_airspeed_m_s;
+	}
+
+	const float pitch_ideal = vtol_brake::idealPitch(_brake_params, speed, _velocity(2), demand);
+
+	if (!PX4_ISFINITE(_brake_pitch)) {
+		_brake_pitch = pitch_ideal;
+	}
+
+	const float step = _brake_pitch_rate * _deltatime;
+	_brake_pitch += math::constrain(pitch_ideal - _brake_pitch, -step, step);
+
+	const vtol_brake::Output out = vtol_brake::brake(_brake_params, speed, _velocity(2), demand, _brake_pitch);
+	_brake_lift = out.lift;
+	_brake_sink_max = vtol_brake::sinkMax(_brake_params, speed, demand);
+
+	vtol_brake_setpoint_s setpoint{};
+	setpoint.decel_setpoint = demand;
+	setpoint.decel = decel;
+	setpoint.pitch = _brake_pitch;
+	setpoint.pitch_ideal = pitch_ideal;
+	setpoint.spoiler = out.spoiler;
+	setpoint.lift = out.lift;
+	setpoint.sink_max = _brake_sink_max;
+	setpoint.airspeed = speed;
+	setpoint.timestamp = hrt_absolute_time();
+	_brake_setpoint_pub.publish(setpoint);
+
+	return _brake_pitch;
 }

@@ -46,6 +46,8 @@
 #ifndef STANDARD_H
 #define STANDARD_H
 #include "vtol_type.h"
+#include <uORB/Subscription.hpp>
+#include <uORB/topics/vtol_brake_setpoint.h>
 
 class Standard : public VtolType
 {
@@ -81,6 +83,12 @@ private:
 	// an abrupt cut (the abrupt stop momentarily exceeded the small v6 ailerons' roll authority -> roll-over).
 	hrt_abstime _fw_mode_entry_time{0};
 
+	// Feed-forward back-transition brake (VT_BFF_EN, FlightTaskTransition): pitch comes with the MC attitude setpoint
+	uORB::Subscription _brake_setpoint_sub{ORB_ID(vtol_brake_setpoint)};
+	vtol_brake_setpoint_s _brake_setpoint{};
+	bool brakeFeedForwardActive();
+	bool _mc_throttle_weight_override{false}; ///< full collective in the feed-forward back transition
+
 	void parameters_update() override;
 
 	DEFINE_PARAMETERS_CUSTOM_PARENT(VtolType,
@@ -91,7 +99,8 @@ private:
 					(ParamFloat<px4::params::VT_LIFT_HND_THR>) _param_vt_lift_hnd_thr,
 					(ParamFloat<px4::params::VT_FW_RDIFF>) _param_vt_fw_rdiff,
 					(ParamFloat<px4::params::VT_FW_MC_THR>) _param_vt_fw_mc_thr,
-					(ParamFloat<px4::params::VT_B_VZ_PITCH>) _param_vt_b_vz_pitch,
+					(ParamBool<px4::params::VT_BFF_EN>) _param_vt_bff_en,
+					(ParamFloat<px4::params::VT_BFF_VEXIT>) _param_vt_bff_vexit,
 					(ParamFloat<px4::params::FW_PSP_OFF>) _param_fw_psp_off
 				       )
 };
