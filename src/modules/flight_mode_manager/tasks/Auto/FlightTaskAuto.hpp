@@ -221,6 +221,7 @@ protected:
 					(ParamFloat<px4::params::MPC_LAND_FLR_H>) _param_mpc_land_flr_h,
 					(ParamFloat<px4::params::MPC_LAND_FLR_V>) _param_mpc_land_flr_v,
 					(ParamFloat<px4::params::MPC_LAND_DEC>) _param_mpc_land_dec,
+					(ParamFloat<px4::params::MPC_LAND_JERK>) _param_mpc_land_jerk,
 					(ParamFloat<px4::params::MPC_LND_GEAR_NX>) _param_mpc_lnd_gear_nx,
 					(ParamFloat<px4::params::MPC_LND_GEAR_NZ>) _param_mpc_lnd_gear_nz,
 					(ParamFloat<px4::params::MPC_LND_GEAR_MX>) _param_mpc_lnd_gear_mx,

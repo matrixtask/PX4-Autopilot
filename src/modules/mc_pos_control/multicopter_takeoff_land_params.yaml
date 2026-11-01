@@ -183,6 +183,16 @@ parameters:
       min: 0.1
       max: 5
       decimal: 2
+    MPC_LAND_JERK:
+      description:
+        short: Jerk limit of the vertical landing
+        long: Replaces MPC_JERK_AUTO while landing (auto land / mission land), for the descent profile braking. 0 = MPC_JERK_AUTO.
+      type: float
+      default: 0.0
+      unit: m/s^3
+      min: 0
+      max: 10
+      decimal: 2
     MPC_LND_GEAR_NX:
       description:
         short: Landing gear, nose contact point forward of the vehicle origin

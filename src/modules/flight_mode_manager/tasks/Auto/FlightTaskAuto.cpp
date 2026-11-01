@@ -261,7 +261,8 @@ void FlightTaskAuto::_prepareLandSetpoints()
 			_param_mpc_z_v_auto_dn.get(), _param_mpc_land_v_app.get(), _param_mpc_land_h_app.get(),
 			_param_mpc_land_crwl.get(), _param_mpc_land_alt3.get(),
 			_param_mpc_land_flr_h.get(), _param_mpc_land_flr_v.get(),
-			_param_mpc_land_dec.get(), _param_mpc_jerk_auto.get()};
+			_param_mpc_land_dec.get(),
+			_param_mpc_land_jerk.get() > FLT_EPSILON ? _param_mpc_land_jerk.get() : _param_mpc_jerk_auto.get()};
 		vertical_speed = landing_surface::descentSpeed(profile, gear_height);
 
 	} else {
@@ -763,6 +764,12 @@ void FlightTaskAuto::_updateTrajConstraints()
 	_position_smoothing.setMaxAccelerationXY(_param_mpc_acc_hor.get()); // TODO : Should be computed using heading
 	_position_smoothing.setMaxVelocityXY(_param_mpc_xy_vel_max.get());
 	_position_smoothing.setMaxJerk(_param_mpc_jerk_auto.get()); // TODO : Should be computed using heading
+
+	if (_type == WaypointType::land && _param_mpc_land_jerk.get() > FLT_EPSILON) {
+		// vertical landing: brake to the approach speed later (a low MPC_JERK_AUTO for cruise comfort made the descent
+		// profile start braking ~9 m above the ground)
+		_position_smoothing.setMaxJerk(_param_mpc_land_jerk.get());
+	}
 
 	if (_type != WaypointType::takeoff) {
 		_takeoff_left_ground_zone = false;
