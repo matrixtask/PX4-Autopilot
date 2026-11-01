@@ -68,6 +68,8 @@ if (gz-transport_FOUND)
 			GZMixingInterfaceWheel.hpp
 			GZGimbal.cpp
 			GZGimbal.hpp
+			GZLandingSensors.cpp
+			GZLandingSensors.hpp
 		DEPENDS
 			mixer_module
 			px4_work_queue

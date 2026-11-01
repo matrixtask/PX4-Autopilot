@@ -155,6 +155,8 @@ int GZBridge::init()
 #if defined(CONFIG_MODULES_GIMBAL)
 
 	// Gimbal mixing interface
+	_landing_sensors.init(_world_name, _model_name);
+
 	if (!_gimbal.init(_world_name, _model_name)) {
 		PX4_ERR("failed to init gimbal");
 		return PX4_ERROR;

@@ -11,7 +11,7 @@
 # https://gazebosim.org/api/sim/8/server_config.html
 # -----------------------------------------------------------------------
 
-export PX4_GZ_MODELS=@PX4_SOURCE_DIR@/Tools/simulation/gz/models
+export PX4_GZ_MODELS=${PX4_GZ_MODELS:-@PX4_SOURCE_DIR@/Tools/simulation/gz/models}  # overridable (e.g. a model variant without the chase camera)
 export PX4_GZ_WORLDS=@PX4_SOURCE_DIR@/Tools/simulation/gz/worlds
 export PX4_GZ_PLUGINS=@PX4_BINARY_DIR@/src/modules/simulation/gz_plugins
 export PX4_GZ_SERVER_CONFIG=@PX4_SOURCE_DIR@/src/modules/simulation/gz_bridge/server.config
