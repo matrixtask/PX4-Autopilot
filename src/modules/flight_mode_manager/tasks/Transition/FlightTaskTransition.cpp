@@ -54,6 +54,8 @@ FlightTaskTransition::FlightTaskTransition()
 	param_get(param_find("VT_F_YAW_HOLD"), &_param_vt_f_yaw_hold);
 	param_get(param_find("MPC_ACC_DECOUPLE"), &_param_mpc_acc_decouple);
 	param_get(param_find("MPC_JERK_AUTO"), &_param_mpc_jerk_auto);
+	param_get(param_find("MPC_ACC_HOR"), &_param_mpc_acc_hor);
+	param_get(param_find("VT_BFF_VEXIT"), &_param_vt_bff_vexit);
 	loadBrakeParams();
 }
 
@@ -373,16 +375,19 @@ float FlightTaskTransition::computeBackTransitionBrake()
 	const Vector2f velocity_xy_direction = velocity_xy.unit_or_zero();
 
 	// Demand: stop at the end point, capped and jerk-limited (comfort), plus an integral trim for model error.
-	float decel_setpoint = math::min(computeBackTransitionDecelSetpoint(), kBrakeDecelCap * _param_vt_b_dec_mss,
-					 kBrakeJerk * _brake_time);
+	// Stopping taper (bumpless MC handover): the multicopter trajectory that takes over at VT_BFF_VEXIT starts at
+	// most at MPC_ACC_HOR and brings it to zero at MPC_JERK_AUTO. Limit the braking to what it can continue,
+	// decel <= sqrt(a_mc^2 + 2 j (v - v_exit)); 2.2 m/s^2 left at the handover was cut to 0.9 by the MC trajectory
+	// and the vehicle surged forward, then oscillated +-4 m/s (HQ01 v8).
+	float taper = INFINITY;
 
-	// Stopping taper: decel <= sqrt(2 j v) brings the braking to zero together with the speed at the MC jerk
-	// (MPC_JERK_AUTO), so the multicopter trajectory that takes over at VT_BFF_VEXIT starts from an acceleration it can
-	// also bring to zero before the vehicle stops (2.6 m/s^2 at 4 m/s overshot backwards by 3 m/s, HQ01 v7).
-	if (_param_mpc_jerk_auto > FLT_EPSILON) {
-		decel_setpoint = math::min(decel_setpoint, sqrtf(2.f * _param_mpc_jerk_auto * velocity_xy.norm()));
+	if (_param_mpc_jerk_auto > FLT_EPSILON && _param_mpc_acc_hor > FLT_EPSILON) {
+		const float excess_speed = math::max(velocity_xy.norm() - _param_vt_bff_vexit, 0.f);
+		taper = sqrtf(_param_mpc_acc_hor * _param_mpc_acc_hor + 2.f * _param_mpc_jerk_auto * excess_speed);
 	}
 
+	const float decel_setpoint = math::min(math::min(computeBackTransitionDecelSetpoint(),
+					       kBrakeDecelCap * _param_vt_b_dec_mss, kBrakeJerk * _brake_time), taper);
 	const Vector2f acceleration_xy{_sub_vehicle_local_position.get().ax, _sub_vehicle_local_position.get().ay};
 	const float decel = _brake_decel_filter.update(-acceleration_xy.dot(velocity_xy_direction), _deltatime);
 
@@ -391,7 +396,7 @@ float FlightTaskTransition::computeBackTransitionBrake()
 					      kBrakeTrimMin, kBrakeTrimMax);
 	}
 
-	const float demand = decel_setpoint + _brake_trim;
+	const float demand = math::min(decel_setpoint + _brake_trim, taper);
 
 	// Dynamic pressure from calibrated airspeed (sea-level density in the law); ground speed without a sensor.
 	float speed = velocity_xy.norm();

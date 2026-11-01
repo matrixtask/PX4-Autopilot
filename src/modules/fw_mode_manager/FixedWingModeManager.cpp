@@ -2898,8 +2898,10 @@ float FixedWingModeManager::glidePathAltitude(const position_setpoint_s &pos_sp_
 	// The leg from the previous to the current waypoint is flown as a straight glide path: the altitude setpoint
 	// follows the along-track position, so a descent (or climb) is spread over the whole leg instead of being flown at
 	// the maximum rate right after the waypoint switch and then held (step - hold - step). TECS shapes the reference
-	// with FW_T_REF_ACC / FW_T_REF_JERK; that S-curve lags a moving target by about vz / (2 a) + a / (2 j), so the
-	// setpoint leads by the same time.
+	// with FW_T_REF_ACC / FW_T_REF_JERK; that S-curve lags a moving target by about vz / (2 a) + a / (2 j), and TECS
+	// itself lags its reference by FW_WP_GLIDE_LD. The setpoint leads by that time, also across the current waypoint
+	// onto the next leg, so a change of gradient is blended around the waypoint and the vehicle is at the waypoint
+	// altitude when it gets there (more than NAV_FW_ALT_RAD off makes PX4 circle at the waypoint).
 	const Vector2f prev_local = _global_local_proj_ref.project(pos_sp_prev.lat, pos_sp_prev.lon);
 	const Vector2f curr_local = _global_local_proj_ref.project(pos_sp_curr.lat, pos_sp_curr.lon);
 	const Vector2f leg = curr_local - prev_local;
@@ -2915,15 +2917,33 @@ float FixedWingModeManager::glidePathAltitude(const position_setpoint_s &pos_sp_
 	const float gradient = (pos_sp_curr.alt - pos_sp_prev.alt) / leg_length;
 	const float ground_speed_along = math::max(ground_speed.dot(leg_unit), 0.f);
 
-	float lead_time = 0.f;
+	// next leg (only a plain waypoint: a landing / back transition flies its own vertical profile)
+	const position_setpoint_s &pos_sp_next = _pos_sp_triplet.next;
+	const bool next_leg = _position_setpoint_next_valid && pos_sp_next.type == position_setpoint_s::SETPOINT_TYPE_POSITION;
+	float next_length = 0.f;
+	float next_gradient = 0.f;
+
+	if (next_leg) {
+		next_length = (_global_local_proj_ref.project(pos_sp_next.lat, pos_sp_next.lon) - curr_local).norm();
+		next_gradient = (next_length > 1.f) ? (pos_sp_next.alt - pos_sp_curr.alt) / next_length : 0.f;
+	}
+
+	float lead_time = math::max(_param_fw_wp_glide_ld.get(), 0.f);
 	const float ref_accel = _param_fw_t_ref_acc.get();
 
 	if (ref_accel > FLT_EPSILON) {
 		const float ref_jerk = _param_fw_t_ref_jerk.get();
-		lead_time = fabsf(gradient) * ground_speed_along / (2.f * ref_accel)
-			    + ((ref_jerk > FLT_EPSILON) ? ref_accel / (2.f * ref_jerk) : 0.f);
+		lead_time += math::max(fabsf(gradient), fabsf(next_gradient)) * ground_speed_along / (2.f * ref_accel)
+			     + ((ref_jerk > FLT_EPSILON) ? ref_accel / (2.f * ref_jerk) : 0.f);
 	}
 
-	const float progress = math::constrain((along_track + ground_speed_along * lead_time) / leg_length, 0.f, 1.f);
-	return pos_sp_prev.alt + progress * (pos_sp_curr.alt - pos_sp_prev.alt);
+	const float ahead = along_track + ground_speed_along * lead_time;
+
+	if (ahead <= leg_length || !next_leg || next_length <= 1.f) {
+		const float progress = math::constrain(ahead / leg_length, 0.f, 1.f);
+		return pos_sp_prev.alt + progress * (pos_sp_curr.alt - pos_sp_prev.alt);
+	}
+
+	const float progress_next = math::constrain((ahead - leg_length) / next_length, 0.f, 1.f);
+	return pos_sp_curr.alt + progress_next * (pos_sp_next.alt - pos_sp_curr.alt);
 }

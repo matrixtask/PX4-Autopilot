@@ -885,6 +885,7 @@ private:
 		(ParamFloat<px4::params::FW_SPOILERS_LND>) _param_fw_spoilers_lnd,
 		(ParamFloat<px4::params::FW_SPOILERS_DESC>) _param_fw_spoilers_desc,
 		(ParamBool<px4::params::FW_WP_GLIDE>) _param_fw_wp_glide,
+		(ParamFloat<px4::params::FW_WP_GLIDE_LD>) _param_fw_wp_glide_ld,
 		(ParamFloat<px4::params::FW_T_REF_ACC>) _param_fw_t_ref_acc,
 		(ParamFloat<px4::params::FW_T_REF_JERK>) _param_fw_t_ref_jerk,
 		(ParamInt<px4::params::FW_POS_STK_CONF>) _param_fw_pos_stk_conf,
