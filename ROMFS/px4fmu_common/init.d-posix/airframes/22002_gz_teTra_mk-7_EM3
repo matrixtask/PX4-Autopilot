@@ -360,6 +360,9 @@ param set-default FW_AIRSPD_STALL 37
 param set-default FW_AIRSPD_MIN 42
 param set-default FW_AIRSPD_TRIM 60
 param set-default FW_AIRSPD_MAX 80
+# Roll setpoint slew (default 90 deg/s): the turn to the first leg started as a 0 -> -9 deg step at the end of the
+# front transition and overshot to -13.6 deg (11/02). 10 deg/s: 20 deg bank in 2 s.
+param set-default FW_PN_R_SLEW_MAX 10
 param set-default FW_R_LIM 25  # roll demand must not saturate (limit cycle at 15 deg); acceptance <= 30 deg
 param set-default FW_YD_GAIN 5.0
 param set-default MIS_DIST_1WP 0
@@ -369,6 +372,9 @@ param set-default MIS_DIST_1WP 0
 # rotors carry exactly the wing's lift deficit (quadratic thrust model, see THR_MDL_FAC).
 param set-default VT_LIFT_HND_V 72
 param set-default VT_LIFT_HND_THR 0.42
+# 11/02 (Tasuku: 前方遷移の終わりで揺れる): the climbing transition left the lift rotors at 0.52, then they stepped to the
+# handoff schedule (0.21): 3.7 m/s climb -> 3.6 m/s sink and a 9.5 deg/s roll. Release them over 3 s instead.
+param set-default VT_LIFT_HND_RT 3.0
 # Transition altitude-loss abort = EM3 requirement (+-15 m around the target altitude during transitions).
 param set-default VT_QC_T_ALT_LOSS 15
 param set-default RTL_TYPE 3
@@ -391,8 +397,11 @@ param set-default FW_T_CLMB_MAX 3.5  # TECS performance model: max climb at trim
 # Final descent into the 3 km arrival zone (11/02, Tasuku: 降下を増やす): 10 m/s = sink at idle and trim speed
 # (FW_T_SINK_MIN), no overspeed; the route plans 0.8 x this (1/9). Ends the back transition near pad + 30 m instead of
 # pad + 115 m (HQ01: vertical descent 54.7 -> ~5 s).
-param set-default FW_T_SINK_R_SP 10.0  # auto descent rate (was 7)
-param set-default FW_T_SINK_MAX 10.0   # (was 8)
+param set-default FW_T_SINK_R_SP 12.0  # auto descent rate (was 7)
+param set-default FW_T_SINK_MAX 13.0   # (was 8)
+# C (11/02, Tasuku A+B+C): beyond the idle sink (FW_T_SINK_MIN 10) the spoilers make up the drag (full spoiler at
+# 72 m/s ~ +4 kN, ~ +18 m/s sink); fw_mode_manager deploys them on the TECS sink shortfall at minimum throttle.
+param set-default FW_SPOILERS_DESC 0.6
 param set-default FW_THR_TRIM 0.90  # level-flight throttle with the evaluation drag (0.93 at 72 m/s, HQ01 opt run 1); 0.27 (clean airframe) kept 0.9 throttle in 5.5 m/s descents -> 81 m/s
 param set-default FW_T_SINK_MIN 10  # sink at idle and trim speed (parasite 0.61 m^2 + windmilling pusher)
 param set-default FW_R_TC 0.5  # 0.8 + 8 deg/s rate limit put NPFG into a +-15 deg bang-bang weave (+-50 deg heading, test 7)
