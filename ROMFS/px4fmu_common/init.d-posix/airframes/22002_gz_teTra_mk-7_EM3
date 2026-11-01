@@ -388,8 +388,11 @@ param set-default VT_B_DEC_MSS 2.0  # 0.2 g braking: back-transition-only sim op
 param set-default VT_B_DEC_I 0.3  # with VT_BFF_EN: decel trim gain [1/s] on top of the feed-forward (0 left 120 m overshoot at +-20 % model error)
 param set-default FW_T_CLMB_R_SP 3.0  # auto climb rate = what the pusher can do with the evaluation drag (3.3 m/s at full throttle, 53 m/s, test_ff_1)
 param set-default FW_T_CLMB_MAX 3.5  # TECS performance model: max climb at trim speed, full throttle
-param set-default FW_T_SINK_R_SP 7.0  # auto descent rate
-param set-default FW_T_SINK_MAX 8.0
+# Final descent into the 3 km arrival zone (11/02, Tasuku: 降下を増やす): 10 m/s = sink at idle and trim speed
+# (FW_T_SINK_MIN), no overspeed; the route plans 0.8 x this (1/9). Ends the back transition near pad + 30 m instead of
+# pad + 115 m (HQ01: vertical descent 54.7 -> ~5 s).
+param set-default FW_T_SINK_R_SP 10.0  # auto descent rate (was 7)
+param set-default FW_T_SINK_MAX 10.0   # (was 8)
 param set-default FW_THR_TRIM 0.90  # level-flight throttle with the evaluation drag (0.93 at 72 m/s, HQ01 opt run 1); 0.27 (clean airframe) kept 0.9 throttle in 5.5 m/s descents -> 81 m/s
 param set-default FW_T_SINK_MIN 10  # sink at idle and trim speed (parasite 0.61 m^2 + windmilling pusher)
 param set-default FW_R_TC 0.5  # 0.8 + 8 deg/s rate limit put NPFG into a +-15 deg bang-bang weave (+-50 deg heading, test 7)
@@ -468,9 +471,12 @@ param set-default MPC_LAND_SLP_ACT 1
 # 0.3 m/s (MPC_LAND_CRWL) from 1 m -> flare to 0.1 m/s over the last 0.3 m. Braking curves at 1 m/s^2 with the auto
 # jerk; the old 10 m -> 5 m interpolation reached a far pad at 0.8-0.9 m/s (MPC_JERK_AUTO 0.5 lags the setpoint).
 param set-default MPC_LAND_V_APP 0.5
-param set-default MPC_LAND_H_APP 3.0
-param set-default MPC_LAND_ALT3 1.0
+# 11/02 (Tasuku: 14 min 10 s must hold): approach gate 3 -> 1.5 m, crawl from 1 -> 0.6 m, braking 1.2 m/s^2 at jerk 1.0
+# (landing only; MPC_JERK_AUTO 0.5 stays for cruise). 115 m vertical: 51.7 -> 45.6 s (model), contact ~0.2 m/s.
+param set-default MPC_LAND_H_APP 1.5
+param set-default MPC_LAND_ALT3 0.6
 param set-default MPC_LAND_CRWL 0.3
 param set-default MPC_LAND_FLR_H 0.3
 param set-default MPC_LAND_FLR_V 0.1
-param set-default MPC_LAND_DEC 1.0
+param set-default MPC_LAND_DEC 1.2
+param set-default MPC_LAND_JERK 1.0
