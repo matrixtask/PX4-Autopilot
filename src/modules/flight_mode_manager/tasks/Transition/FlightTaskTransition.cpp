@@ -257,12 +257,12 @@ float FlightTaskTransition::computeVerticalVelocityTarget() const
 
 float FlightTaskTransition::computeBackTransitionDecelSetpoint() const
 {
-	// Deceleration that stops the vehicle at the back-transition end point (upstream logic, unchanged)
+	// Deceleration that stops the vehicle at the back-transition end point: closing speed^2 / (2 distance).
+	// Upstream used the distance along the velocity direction; at low speed a small lateral drift turns the velocity
+	// away from the point, that distance collapses (HQ01: 13 m along-velocity with the pad 79 m away) and the demand
+	// stopped the vehicle 80 m short, followed by a 7 m/s MC reposition with a pitch / roll weave.
 	const Vector2f position_xy{_position};
 	const Vector2f velocity_xy{_velocity};
-	const Vector2f velocity_xy_direction =
-		velocity_xy.unit_or_zero(); // Zero when velocity invalid Vector2f(NAN, NAN).unit_or_zero() == Vector2f(0.f, 0.f)
-
 	float deceleration_setpoint = _param_vt_b_dec_mss;
 
 	const float max_hor_pos_uncertainty_limit = 10.f;
@@ -275,11 +275,12 @@ float FlightTaskTransition::computeBackTransitionDecelSetpoint() const
 					position_setpoint_local(0), position_setpoint_local(1));
 
 		const Vector2f pos_to_target = position_setpoint_local - position_xy; // backtransition end-point w.r.t. vehicle
-		const float dist_to_target_in_moving_direction = pos_to_target.dot(velocity_xy_direction);
+		const float dist_to_target = pos_to_target.norm();
+		const float closing_speed = dist_to_target > FLT_EPSILON ? velocity_xy.dot(pos_to_target / dist_to_target) : 0.f;
 
-		if (dist_to_target_in_moving_direction > FLT_EPSILON) {
+		if (dist_to_target > FLT_EPSILON && closing_speed > FLT_EPSILON) {
 			// Backtransition target point is ahead of the vehicle, compute the desired deceleration
-			deceleration_setpoint = velocity_xy.norm_squared() / (2.f * dist_to_target_in_moving_direction);
+			deceleration_setpoint = closing_speed * closing_speed / (2.f * dist_to_target);
 
 		} else {
 			deceleration_setpoint = 2.f * _param_vt_b_dec_mss;
