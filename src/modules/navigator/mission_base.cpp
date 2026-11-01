@@ -330,6 +330,8 @@ MissionBase::on_active()
 		replayCachedSpeedChangeItems();
 	}
 
+	updateTakeoffHeading();
+
 	/* lets check if we reached the current mission item */
 	if (_mission_type != MissionType::MISSION_TYPE_NONE && is_mission_item_reached_or_completed()) {
 		/* If we just completed a takeoff which was inserted before the right waypoint,
@@ -1564,4 +1566,54 @@ void MissionBase::updateMissionAltAfterHomeChanged()
 
 		_home_update_counter = _navigator->get_home_position()->update_count;
 	}
+}
+
+void MissionBase::updateTakeoffHeading()
+{
+	// Upstream: the takeoff climb holds the heading and the vehicle turns on the spot before the transition
+	// (MIS_YAW_ERR). With MIS_TKO_YAW_NX the turn happens during the climb instead, towards the first leg.
+	const bool climbing = _work_item_type == WorkItemType::WORK_ITEM_TYPE_CLIMB
+			      && (_mission_item.nav_cmd == NAV_CMD_TAKEOFF || _mission_item.nav_cmd == NAV_CMD_VTOL_TAKEOFF);
+
+	if (!_param_mis_tko_yaw_nx.get() || !climbing || !_vehicle_status_sub.get().is_vtol
+	    || _vehicle_status_sub.get().vehicle_type != vehicle_status_s::VEHICLE_TYPE_ROTARY_WING) {
+		_takeoff_start_alt = NAN;
+		return;
+	}
+
+	const vehicle_global_position_s &gpos = *_navigator->get_global_position();
+
+	if (_land_detected_sub.get().landed || !PX4_ISFINITE(gpos.alt)) {
+		_takeoff_start_alt = gpos.alt;
+		return;
+	}
+
+	if (!PX4_ISFINITE(_takeoff_start_alt)) {
+		_takeoff_start_alt = _navigator->get_home_position()->valid_alt ? _navigator->get_home_position()->alt : gpos.alt;
+	}
+
+	position_setpoint_triplet_s *pos_sp_triplet = _navigator->get_position_setpoint_triplet();
+
+	if (PX4_ISFINITE(pos_sp_triplet->current.yaw) || gpos.alt - _takeoff_start_alt < _param_mis_tko_yaw_h.get()) {
+		return;
+	}
+
+	int32_t next_index;
+	size_t num_found{0U};
+	getNextPositionItems(_mission.current_seq + 1, &next_index, num_found, 1U);
+	mission_item_s next_item;
+
+	if (num_found != 1U || !loadMissionItemFromCache(next_index, next_item)) {
+		return;
+	}
+
+	// the first leg must be clearly away from the takeoff point, otherwise the bearing is meaningless
+	if (get_distance_to_next_waypoint(gpos.lat, gpos.lon, next_item.lat, next_item.lon) < 2.f * _navigator->get_acceptance_radius()) {
+		return;
+	}
+
+	pos_sp_triplet->current.yaw = matrix::wrap_pi(get_bearing_to_next_waypoint(gpos.lat, gpos.lon, next_item.lat,
+				      next_item.lon));
+	_mission_item.yaw = pos_sp_triplet->current.yaw;
+	_navigator->set_position_setpoint_triplet_updated();
 }

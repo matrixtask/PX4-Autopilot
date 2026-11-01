@@ -598,8 +598,16 @@ private:
 
 	DEFINE_PARAMETERS_CUSTOM_PARENT(
 		ModuleParams,
-		(ParamInt<px4::params::MIS_MNT_YAW_CTL>) _param_mis_mnt_yaw_ctl
+		(ParamInt<px4::params::MIS_MNT_YAW_CTL>) _param_mis_mnt_yaw_ctl,
+		(ParamBool<px4::params::MIS_TKO_YAW_NX>) _param_mis_tko_yaw_nx,
+		(ParamFloat<px4::params::MIS_TKO_YAW_H>) _param_mis_tko_yaw_h
 	)
+
+	/**
+	 * VTOL takeoff climb: yaw towards the next position item once airborne (MIS_TKO_YAW_NX).
+	 */
+	void updateTakeoffHeading();
+	float _takeoff_start_alt{NAN}; ///< AMSL altitude where the takeoff climb started [m]
 
 	uORB::SubscriptionInterval _parameter_update_sub{ORB_ID(parameter_update), 1_s};
 	uORB::SubscriptionData<geofence_status_s> _geofence_status_sub{ORB_ID(geofence_status)};

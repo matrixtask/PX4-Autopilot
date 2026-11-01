@@ -86,6 +86,26 @@ parameters:
       max: 90
       decimal: 1
       increment: 1
+    MIS_TKO_YAW_NX:
+      description:
+        short: Turn towards the first leg during a VTOL takeoff climb
+        long: |-
+          VTOL, multicopter takeoff item without a heading: once airborne (MIS_TKO_YAW_H above the takeoff point),
+          the vehicle yaws towards the next position item while it climbs, so the following transition starts
+          with the nose already on course instead of turning on the spot at the top of the climb.
+          0 = upstream (hold the heading, align before the transition).
+      type: boolean
+      default: 0
+    MIS_TKO_YAW_H:
+      description:
+        short: Height above the takeoff point at which MIS_TKO_YAW_NX starts the turn
+        long: Keeps the turn off the ground (skids) and out of ground effect.
+      type: float
+      default: 3.0
+      unit: m
+      min: 0
+      max: 50
+      decimal: 1
     MIS_LND_ABRT_ALT:
       description:
         short: Landing abort min altitude
