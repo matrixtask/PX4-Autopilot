@@ -140,6 +140,7 @@ protected:
 	float landingGearClearance();
 	float _landing_slope{NAN};
 	bool _landing_slope_warned{false};
+	bool _takeoff_left_ground_zone{false}; ///< takeoff climbed past MPC_LAND_ALT1 once: no second ramp (range sensor over obstacles)
 
 	float _target_acceptance_radius{0.0f}; /**< Acceptances radius of the target */
 

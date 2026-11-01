@@ -743,6 +743,13 @@ void FlightTaskAuto::_updateTrajConstraints()
 	_position_smoothing.setMaxVelocityXY(_param_mpc_xy_vel_max.get());
 	_position_smoothing.setMaxJerk(_param_mpc_jerk_auto.get()); // TODO : Should be computed using heading
 
+	if (_type != WaypointType::takeoff) {
+		_takeoff_left_ground_zone = false;
+
+	} else if (_dist_to_ground >= _param_mpc_land_alt1.get()) {
+		_takeoff_left_ground_zone = true;
+	}
+
 	if (_is_emergency_braking_active) {
 		// When initializing with large velocity, allow 1g of
 		// acceleration in 1s on all axes for fast braking
@@ -763,7 +770,10 @@ void FlightTaskAuto::_updateTrajConstraints()
 		// until the constraints don't do things like cause controller integrators to saturate. Once the controller
 		// doesn't use z speed constraints, this can go in _prepareTakeoffSetpoints(). Accel limit is to
 		// emulate the motor ramp (also done in the controller) so that the controller can actually track the setpoint.
-		if (_type == WaypointType::takeoff &&  _dist_to_ground < _param_mpc_land_alt1.get()) {
+		// Only once per takeoff: with a range sensor the distance to ground drops again when the climb passes over
+		// a building or rising terrain, and repeating the ramp (and resetting the altitude setpoint) stalled the
+		// climb mid-air (HQ01: 14.7 -> 6.8 m at 14 m altitude, takeoff 6 s longer).
+		if (_type == WaypointType::takeoff && !_takeoff_left_ground_zone && _dist_to_ground < _param_mpc_land_alt1.get()) {
 			z_vel_constraint = _param_mpc_tko_speed.get();
 			z_accel_constraint = math::min(z_accel_constraint, _param_mpc_tko_speed.get() / _param_mpc_tko_ramp_t.get());
 
