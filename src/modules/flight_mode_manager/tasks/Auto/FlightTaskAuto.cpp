@@ -35,6 +35,8 @@
  */
 
 #include "FlightTaskAuto.hpp"
+#include <lib/landing_surface/PlaneFit.hpp>
+#include <px4_platform_common/events.h>
 #include <mathlib/mathlib.h>
 #include <float.h>
 
@@ -231,18 +233,36 @@ void FlightTaskAuto::_prepareLandSetpoints()
 {
 	_velocity_setpoint.setNaN(); // Don't take over any smoothed velocity setpoint
 
-	// Slow down automatic descend close to ground
-	float vertical_speed = math::interpolate(_dist_to_ground,
+	// Slow down automatic descend close to ground. With a terrain camera the height is the clearance of the lowest
+	// landing-gear contact point above the measured ground plane (on a slope the uphill wheel touches first);
+	// otherwise the distance sensor / altitude above home as upstream.
+	const float gear_clearance = landingGearClearance();
+	const float dist_to_ground = PX4_ISFINITE(gear_clearance) ? gear_clearance : _dist_to_ground;
+	float vertical_speed = math::interpolate(dist_to_ground,
 			       _param_mpc_land_alt2.get(), _param_mpc_land_alt1.get(),
 			       _param_mpc_land_speed.get(), _param_mpc_z_vel_max_dn.get());
 
-	bool range_dist_available = PX4_ISFINITE(_dist_to_bottom);
+	bool range_dist_available = PX4_ISFINITE(_dist_to_bottom) || PX4_ISFINITE(gear_clearance);
 
-	if (range_dist_available && _dist_to_bottom <= _param_mpc_land_alt3.get()) {
+	if (range_dist_available && dist_to_ground <= _param_mpc_land_alt3.get()) {
 		vertical_speed = _param_mpc_land_crwl.get();
 	}
 
+	// Ground too steep to stand on: stop the descent below MPC_LAND_ALT1 and hold (navigator / pilot decides).
+	if (_param_mpc_land_slope.get() > FLT_EPSILON && PX4_ISFINITE(_landing_slope)
+	    && _landing_slope > math::radians(_param_mpc_land_slope.get()) && dist_to_ground < _param_mpc_land_alt1.get()) {
+		vertical_speed = 0.f;
+
+		if (!_landing_slope_warned) {
+			events::send<float, float>(events::ID("flight_task_land_slope"), events::Log::Warning,
+						   "Landing stopped: ground slope {1:.1} deg exceeds {2:.1} deg",
+						   math::degrees(_landing_slope), _param_mpc_land_slope.get());
+			_landing_slope_warned = true;
+		}
+	}
+
 	if (_type_previous != WaypointType::land) {
+		_landing_slope_warned = false;
 		// initialize yaw and xy-position
 		_land_heading = PX4_ISFINITE(_yaw_setpoint) ? _yaw_setpoint : _yaw_setpoint_previous;
 
@@ -779,4 +799,28 @@ void FlightTaskAuto::updateParams()
 
 	// make sure that alt1 is above alt2
 	_param_mpc_land_alt1.set(math::max(_param_mpc_land_alt1.get(), _param_mpc_land_alt2.get()));
+}
+
+float FlightTaskAuto::landingGearClearance()
+{
+	_landing_surface_sub.update();
+	_attitude_sub.update();
+	const landing_surface_s &surface = _landing_surface_sub.get();
+
+	if (!surface.valid || hrt_elapsed_time(&surface.timestamp) > 500_ms || !PX4_ISFINITE(surface.height)) {
+		_landing_slope = NAN;
+		return NAN;
+	}
+
+	landing_surface::Plane plane{};
+	plane.valid = true;
+	plane.a = surface.dzdx;
+	plane.b = surface.dzdy;
+	plane.c = surface.height;
+	_landing_slope = surface.slope;
+
+	const float nx = _param_mpc_lnd_gear_nx.get(), nz = _param_mpc_lnd_gear_nz.get();
+	const float mx = _param_mpc_lnd_gear_mx.get(), my = _param_mpc_lnd_gear_my.get(), mz = _param_mpc_lnd_gear_mz.get();
+	const matrix::Vector3f gear[3] = {{nx, 0.f, nz}, {mx, my, mz}, {mx, -my, mz}};
+	return landing_surface::gearClearance(plane, matrix::Quatf(_attitude_sub.get().q), gear, 3);
 }

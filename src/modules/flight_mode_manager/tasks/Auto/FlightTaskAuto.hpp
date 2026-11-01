@@ -48,6 +48,8 @@
 #include <uORB/topics/prec_land_status.h>
 #endif // CONFIG_MODULES_VISION_TARGET_ESTIMATOR
 #include <uORB/topics/vehicle_status.h>
+#include <uORB/topics/landing_surface.h>
+#include <uORB/topics/vehicle_attitude.h>
 #include <lib/geo/geo.h>
 #include <lib/mathlib/math/filter/AlphaFilter.hpp>
 #include <lib/motion_planning/HeadingSmoothing.hpp>
@@ -128,6 +130,16 @@ protected:
 #endif // CONFIG_MODULES_VISION_TARGET_ESTIMATOR
 	uORB::SubscriptionData<home_position_s>			_sub_home_position {ORB_ID(home_position)};
 	uORB::SubscriptionData<vehicle_status_s>		_sub_vehicle_status{ORB_ID(vehicle_status)};
+	uORB::SubscriptionData<landing_surface_s>		_landing_surface_sub{ORB_ID(landing_surface)};
+	uORB::SubscriptionData<vehicle_attitude_s>		_attitude_sub{ORB_ID(vehicle_attitude)};
+
+	/**
+	 * Height for the landing slowdown: clearance of the lowest landing-gear contact point above the ground plane
+	 * from the terrain camera (landing_surface), or NAN without a fresh surface. Sets _landing_slope [rad].
+	 */
+	float landingGearClearance();
+	float _landing_slope{NAN};
+	bool _landing_slope_warned{false};
 
 	float _target_acceptance_radius{0.0f}; /**< Acceptances radius of the target */
 
@@ -170,6 +182,12 @@ protected:
 					(ParamFloat<px4::params::MPC_LAND_ALT1>) _param_mpc_land_alt1,
 					(ParamFloat<px4::params::MPC_LAND_ALT2>) _param_mpc_land_alt2,
 					(ParamFloat<px4::params::MPC_LAND_ALT3>) _param_mpc_land_alt3,
+					(ParamFloat<px4::params::MPC_LAND_SLOPE>) _param_mpc_land_slope,
+					(ParamFloat<px4::params::MPC_LND_GEAR_NX>) _param_mpc_lnd_gear_nx,
+					(ParamFloat<px4::params::MPC_LND_GEAR_NZ>) _param_mpc_lnd_gear_nz,
+					(ParamFloat<px4::params::MPC_LND_GEAR_MX>) _param_mpc_lnd_gear_mx,
+					(ParamFloat<px4::params::MPC_LND_GEAR_MY>) _param_mpc_lnd_gear_my,
+					(ParamFloat<px4::params::MPC_LND_GEAR_MZ>) _param_mpc_lnd_gear_mz,
 					(ParamFloat<px4::params::MPC_Z_V_AUTO_UP>) _param_mpc_z_v_auto_up,
 					(ParamFloat<px4::params::MPC_Z_V_AUTO_DN>) _param_mpc_z_v_auto_dn,
 					(ParamFloat<px4::params::MPC_TKO_SPEED>) _param_mpc_tko_speed,

@@ -61,6 +61,68 @@ parameters:
       min: 0
       max: 122
       decimal: 1
+    MPC_LAND_SLOPE:
+      description:
+        short: Steepest ground slope accepted for an automatic landing
+        long: |-
+          With a terrain camera (landing_surface): below MPC_LAND_ALT1 the descent stops (hold) while the measured
+          ground plane under the vehicle is steeper than this, instead of touching down one gear first on a slope
+          the aircraft cannot stand on. 0 = no check.
+      type: float
+      default: 0.0
+      unit: deg
+      min: 0
+      max: 30
+      decimal: 1
+    MPC_LND_GEAR_NX:
+      description:
+        short: Landing gear, nose contact point forward of the vehicle origin
+        long: |-
+          Tricycle gear contact points in the body frame (FRD, m) for the gear clearance on a sloped landing
+          surface (landing_surface): nose (NX, 0, NZ), mains (MX, +-MY, MZ). The slowdown below MPC_LAND_ALT1/2/3
+          uses the clearance of the lowest contact point instead of the height of the vehicle origin.
+      type: float
+      default: 0.0
+      unit: m
+      min: -20
+      max: 20
+      decimal: 3
+    MPC_LND_GEAR_NZ:
+      description:
+        short: Landing gear, nose contact point below the vehicle origin
+      type: float
+      default: 0.0
+      unit: m
+      min: -10
+      max: 10
+      decimal: 3
+    MPC_LND_GEAR_MX:
+      description:
+        short: Landing gear, main contact points forward of the vehicle origin
+      type: float
+      default: 0.0
+      unit: m
+      min: -20
+      max: 20
+      decimal: 3
+    MPC_LND_GEAR_MY:
+      description:
+        short: Landing gear, main contact points half track
+      type: float
+      default: 0.0
+      unit: m
+      min: 0
+      max: 20
+      decimal: 3
+    MPC_LND_GEAR_MZ:
+      description:
+        short: Landing gear, main contact points below the vehicle origin
+      type: float
+      default: 0.0
+      unit: m
+      min: -10
+      max: 10
+      decimal: 3
     MPC_LAND_SPEED:
       description:
         short: Landing descend rate
