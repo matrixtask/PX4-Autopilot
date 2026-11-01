@@ -147,6 +147,7 @@ void GZLandingSensors::depthCallback(const gz::msgs::Image &msg)
 	out.slope_azimuth = plane.slope_azimuth;
 	out.roughness = plane.rms;
 	out.inliers = static_cast<uint16_t>(plane.inliers);
+	out.points = static_cast<uint16_t>(n);
 	out.timestamp = hrt_absolute_time();
 	_surface_pub.publish(out);
 }

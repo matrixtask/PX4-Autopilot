@@ -13,3 +13,4 @@ float32 slope			# [rad] plane inclination from horizontal
 float32 slope_azimuth		# [rad] direction of steepest descent, NED heading
 float32 roughness		# [m] RMS residual of the inliers
 uint16 inliers			# points used
+uint16 points			# valid depth points (inliers / points < 1: obstacles or a step in view)

@@ -5,5 +5,6 @@
 #
 ############################################################################
 
-# Header-only ground-plane fit for landing (PlaneFit.hpp).
+# Header-only ground-plane fit (PlaneFit.hpp) and landing profile / site search (LandingProfile.hpp).
 px4_add_unit_gtest(SRC PlaneFitTest.cpp)
+px4_add_unit_gtest(SRC LandingProfileTest.cpp)
