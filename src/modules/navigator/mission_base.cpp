@@ -683,6 +683,11 @@ void MissionBase::handleLanding(WorkItemType &new_work_item_type, mission_item_s
 			if (pos_sp_triplet->current.valid
 			    && pos_sp_triplet->current.type == position_setpoint_s::SETPOINT_TYPE_POSITION) {
 				altitude = pos_sp_triplet->current.alt;
+
+				// A descending back transition (VT_B_TRANS_VZ) ends below the approach altitude: do not climb back.
+				if (_work_item_type == WorkItemType::WORK_ITEM_TYPE_MOVE_TO_LAND_AFTER_TRANSITION) {
+					altitude = math::min(altitude, _global_pos_sub.get().alt);
+				}
 			}
 
 			_mission_item.altitude = altitude;

@@ -40,7 +40,7 @@ parameters:
       default: 10.0
       unit: s
       min: 0.1
-      max: 20.0
+      max: 120.0
       increment: 1
       decimal: 2
     VT_F_TRANS_THR:
@@ -52,6 +52,56 @@ parameters:
       max: 1.0
       increment: 0.01
       decimal: 3
+    VT_F_TRANS_VZ:
+      description:
+        short: Climb rate during front transition
+        long: |-
+          Auto modes: the front transition climbs towards the altitude of the next position setpoint at up to this
+          rate instead of holding the altitude where it started. The rate fades out within ~5 s of the target.
+          Capped by MPC_Z_VEL_MAX_UP. 0 holds altitude (upstream behaviour).
+      type: float
+      default: 0.0
+      unit: m/s
+      min: 0.0
+      max: 10.0
+      increment: 0.5
+      decimal: 1
+    VT_B_TRANS_VZ:
+      description:
+        short: Descent rate during back transition
+        long: |-
+          Auto modes: the back transition descends towards the landing point (but not below VT_B_TRANS_HMIN above
+          it) at up to this rate while horizontal speed is above 50 kt. Between 50 and 30 kt the limit blends down
+          to VT_B_TRANS_VZLO (vortex ring state). 0 holds altitude (upstream behaviour).
+      type: float
+      default: 0.0
+      unit: m/s
+      min: 0.0
+      max: 10.0
+      increment: 0.5
+      decimal: 1
+    VT_B_TRANS_VZLO:
+      description:
+        short: Back transition descent rate limit at low speed
+        long: Descent rate limit below 30 kt horizontal speed during a descending back transition (VT_B_TRANS_VZ).
+      type: float
+      default: 1.4
+      unit: m/s
+      min: 0.0
+      max: 5.0
+      increment: 0.1
+      decimal: 1
+    VT_B_TRANS_HMIN:
+      description:
+        short: Minimum height above the landing point in a descending back transition
+        long: The descending back transition (VT_B_TRANS_VZ) levels off this far above the back-transition target altitude.
+      type: float
+      default: 30.0
+      unit: m
+      min: 0.0
+      max: 500.0
+      increment: 1
+      decimal: 0
     VT_B_DEC_MSS:
       description:
         short: Approximate deceleration during back transition

@@ -71,10 +71,19 @@ private:
 	float _param_fw_psp_off{0.f};
 	float _param_vt_b_dec_i{0.f};
 	float _param_vt_b_dec_mss{0.f};
+	float _param_vt_f_trans_vz{0.f};    ///< climb rate during front transition [m/s], 0 = hold altitude (upstream)
+	float _param_vt_b_trans_vz{0.f};    ///< descent rate during back transition at speed [m/s], 0 = hold altitude
+	float _param_vt_b_trans_vzlo{0.f};  ///< descent rate limit at low speed (vortex ring state) [m/s]
+	float _param_vt_b_trans_hmin{0.f};  ///< lowest height above the back-transition target [m]
+
+	static constexpr float kAltitudeCaptureTimeConstant = 5.0f; ///< [s] climb/descent rate fades out near the target
+	static constexpr float kLowSpeedSink = 15.4f;   ///< [m/s] (30 kt) below this only VT_B_TRANS_VZLO is allowed
+	static constexpr float kFullSpeedSink = 25.7f;  ///< [m/s] (50 kt) above this the full VT_B_TRANS_VZ is allowed
 
 	AlphaFilter<float> _vel_z_filter{kVerticalVelocityTimeConstant};
 	AlphaFilter<matrix::Vector2f> _accel_filter{kAccelerationFilterTimeConstant};
 	float _decel_error_bt_int{0.f}; ///< Backtransition deceleration error integrator value
 
 	float computeBackTransitionTiltSetpoint();
+	float computeVerticalVelocityTarget() const;
 };

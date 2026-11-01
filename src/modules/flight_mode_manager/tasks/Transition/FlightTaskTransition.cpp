@@ -37,6 +37,8 @@
 
 #include "FlightTaskTransition.hpp"
 
+#include <lib/geo/geo.h>
+
 using namespace matrix;
 
 FlightTaskTransition::FlightTaskTransition()
@@ -44,6 +46,10 @@ FlightTaskTransition::FlightTaskTransition()
 	param_get(param_find("FW_PSP_OFF"), &_param_fw_psp_off);
 	param_get(param_find("VT_B_DEC_I"), &_param_vt_b_dec_i);
 	param_get(param_find("VT_B_DEC_MSS"), &_param_vt_b_dec_mss);
+	param_get(param_find("VT_F_TRANS_VZ"), &_param_vt_f_trans_vz);
+	param_get(param_find("VT_B_TRANS_VZ"), &_param_vt_b_trans_vz);
+	param_get(param_find("VT_B_TRANS_VZLO"), &_param_vt_b_trans_vzlo);
+	param_get(param_find("VT_B_TRANS_HMIN"), &_param_vt_b_trans_hmin);
 }
 
 bool FlightTaskTransition::activate(const trajectory_setpoint_s &last_setpoint)
@@ -84,8 +90,15 @@ bool FlightTaskTransition::update()
 	// tiltrotors and standard vtol will overrride roll and pitch setpoint but keep vertical thrust setpoint
 	bool ret = FlightTask::update();
 
-	// slowly move vertical velocity setpoint to zero
-	_velocity_setpoint(2) = _vel_z_filter.update(0.0f, _deltatime);
+	// Vertical velocity: upstream holds altitude (target 0). With VT_F_TRANS_VZ / VT_B_TRANS_VZ set, the
+	// transition climbs towards / descends towards the mission altitude instead (see computeVerticalVelocityTarget).
+	const float vz_target = computeVerticalVelocityTarget();
+	_velocity_setpoint(2) = _vel_z_filter.update(vz_target, _deltatime);
+
+	// the default MPC_Z_VEL_MAX_DN (slow MC descent) must not cap the faster wing-borne descent
+	if (vz_target > _constraints.speed_down) {
+		_constraints.speed_down = vz_target;
+	}
 
 	// calculate a horizontal acceleration vector which corresponds to an attitude composed of pitch up by _param_fw_psp_off
 	// and zero roll angle
@@ -107,6 +120,51 @@ bool FlightTaskTransition::update()
 	_yaw_setpoint = NAN;
 	_yawspeed_setpoint = 0.f;
 	return ret;
+}
+
+float FlightTaskTransition::computeVerticalVelocityTarget() const
+{
+	// NED: negative = climb. Returns 0 (hold altitude, upstream behaviour) whenever the feature is off or the
+	// target altitude is unknown.
+	const vehicle_local_position_s &lpos = _sub_vehicle_local_position.get();
+
+	if (!lpos.z_global || !PX4_ISFINITE(_position(2))) {
+		return 0.f;
+	}
+
+	const float altitude = lpos.ref_alt - _position(2); // AMSL
+
+	if (_sub_vehicle_status.get().in_transition_to_fw) {
+		// Front transition: climb towards the next waypoint altitude, slowing down when within reach.
+		const position_setpoint_s &target = _sub_position_sp_triplet.get().current;
+
+		if (_param_vt_f_trans_vz < FLT_EPSILON || !target.valid || !PX4_ISFINITE(target.alt)) {
+			return 0.f;
+		}
+
+		const float climb = math::constrain((target.alt - altitude) / kAltitudeCaptureTimeConstant, 0.f, _param_vt_f_trans_vz);
+		return -climb;
+	}
+
+	// Back transition: descend towards the landing point, but stay VT_B_TRANS_HMIN above it. The allowed sink
+	// rate drops to VT_B_TRANS_VZLO at low speed (rotor vortex ring state), as in the Mk-7 route evaluation.
+	// Navigator keeps "current" at the approach altitude during a VTOL landing; the landing point itself is "next"
+	// (type LAND). Its `valid` flag is not always set during the transition item, so the type and the distance to
+	// "current" (same point) are checked instead.
+	const position_setpoint_s &current = _sub_position_sp_triplet.get().current;
+	const position_setpoint_s &land = _sub_position_sp_triplet.get().next;
+
+	if (_param_vt_b_trans_vz < FLT_EPSILON || land.type != position_setpoint_s::SETPOINT_TYPE_LAND
+	    || !PX4_ISFINITE(land.alt) || !current.valid
+	    || get_distance_to_next_waypoint(current.lat, current.lon, land.lat, land.lon) > 100.f) {
+		return 0.f;
+	}
+
+	const float speed = matrix::Vector2f(_velocity).norm();
+	const float blend = math::constrain((speed - kLowSpeedSink) / (kFullSpeedSink - kLowSpeedSink), 0.f, 1.f);
+	const float sink_limit = _param_vt_b_trans_vzlo + (_param_vt_b_trans_vz - _param_vt_b_trans_vzlo) * blend;
+	const float floor_alt = land.alt + _param_vt_b_trans_hmin;
+	return math::constrain((altitude - floor_alt) / kAltitudeCaptureTimeConstant, 0.f, sink_limit);
 }
 
 float FlightTaskTransition::computeBackTransitionTiltSetpoint()
