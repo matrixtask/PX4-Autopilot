@@ -692,6 +692,18 @@ void MissionBase::handleLanding(WorkItemType &new_work_item_type, mission_item_s
 				}
 			}
 
+			const bool after_back_transition = _work_item_type == WorkItemType::WORK_ITEM_TYPE_MOVE_TO_LAND_AFTER_TRANSITION;
+
+			if (after_back_transition) {
+				// Keep descending to VT_B_TRANS_HMIN above the landing point while closing the last metres: holding
+				// the altitude where the transition ended made the still-sinking vehicle climb back 15 m (Mk-7 HQ01).
+				float hmin = 0.f;
+
+				if (param_get(param_find("VT_B_TRANS_HMIN"), &hmin) == PX4_OK && hmin > FLT_EPSILON) {
+					altitude = math::min(altitude, get_absolute_altitude_for_item(_mission_item) + hmin);
+				}
+			}
+
 			_mission_item.altitude = altitude;
 			_mission_item.altitude_is_relative = false;
 			_mission_item.nav_cmd = NAV_CMD_WAYPOINT;
@@ -700,6 +712,13 @@ void MissionBase::handleLanding(WorkItemType &new_work_item_type, mission_item_s
 			// have to reset here because these field were used in set_vtol_transition_item
 			_mission_item.time_inside = 0.f;
 			_mission_item.acceptance_radius = _navigator->get_acceptance_radius();
+
+			if (after_back_transition) {
+				// The back transition stops at the point: the remaining correction is short. Keep the heading
+				// (yaw-first MPC_YAW_MODE 4 turned on the spot for 18 s to correct 200 m, Mk-7 HQ01).
+				_mission_item.yaw = _navigator->get_local_position()->heading;
+				_mission_item.force_heading = false;
+			}
 
 			// make previous setpoint invalid, such that there will be no prev-current line following.
 			// if the vehicle drifted off the path during back-transition it should just go straight to the landing point
