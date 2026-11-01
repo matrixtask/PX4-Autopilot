@@ -287,6 +287,15 @@ void Standard::update_transition_state()
 				pitch_body = pitch_mc;
 			}
 
+			// (3) BALLOON SUPPRESSION: pitch down while actually climbing, weighted by the wing's share of the lift.
+			// Without it a back transition started at 72 m/s climbed 56 m. Only a real climb counts: a sink slower
+			// than a descending setpoint (VT_B_TRANS_VZ) must not pitch down, that would cancel the braking.
+			if (_param_vt_b_vz_pitch.get() > FLT_EPSILON && PX4_ISFINITE(_local_pos->vz)) {
+				const float climb_rate = math::max(-_local_pos->vz, 0.f); // NED
+				const float wing_share = 1.0f - lift_floor;
+				pitch_body -= wing_share * math::min(math::radians(_param_vt_b_vz_pitch.get()) * climb_rate, math::radians(10.f));
+			}
+
 			// blend roll setpoint between FW and MC
 			const float roll_body_fw = Eulerf(Quatf(_fw_virtual_att_sp->q_d)).phi();
 			// Stock mc_weight roll blend kept: slower roll-out and yaw/roll overrides were tested and worsened the

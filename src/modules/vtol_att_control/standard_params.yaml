@@ -77,6 +77,22 @@ parameters:
       max: 80.0
       increment: 1.0
       decimal: 1
+    VT_B_VZ_PITCH:
+      description:
+        short: Back-transition pitch correction per m/s of climb
+        long: |-
+          While the wing still carries lift in a back transition, nose-up for braking raises the angle of attack
+          and the aircraft balloons (the lift rotors can only push up, they cannot cancel it). This pitches the
+          nose down by this many degrees per m/s of actual climb rate, scaled by the wing's share of the lift
+          (CAS/VT_LIFT_HND_V)^2, limited to 10 deg. A sink slower than a descending setpoint is not corrected
+          (that would cancel the braking). 0 = off (upstream behaviour).
+      type: float
+      default: 0.0
+      unit: deg
+      min: 0.0
+      max: 10.0
+      increment: 0.5
+      decimal: 1
     VT_LIFT_HND_THR:
       description:
         short: Lift-rotor collective at the FW handoff (hover-thrust scale) [-]

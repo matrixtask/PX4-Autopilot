@@ -91,6 +91,7 @@ private:
 					(ParamFloat<px4::params::VT_LIFT_HND_THR>) _param_vt_lift_hnd_thr,
 					(ParamFloat<px4::params::VT_FW_RDIFF>) _param_vt_fw_rdiff,
 					(ParamFloat<px4::params::VT_FW_MC_THR>) _param_vt_fw_mc_thr,
+					(ParamFloat<px4::params::VT_B_VZ_PITCH>) _param_vt_b_vz_pitch,
 					(ParamFloat<px4::params::FW_PSP_OFF>) _param_fw_psp_off
 				       )
 };
