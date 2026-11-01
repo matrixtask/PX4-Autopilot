@@ -81,6 +81,8 @@ private:
 	static constexpr float kAltitudeCaptureTimeConstant = 5.0f; ///< [s] climb/descent rate fades out near the target
 	static constexpr float kLowSpeedSink = 15.4f;   ///< [m/s] (30 kt) below this only VT_B_TRANS_VZLO is allowed
 	static constexpr float kFullSpeedSink = 25.7f;  ///< [m/s] (50 kt) above this the full VT_B_TRANS_VZ is allowed
+	static constexpr float kFullSinkMaxSpeed = 30.9f; ///< [m/s] (60 kt) full sink up to this speed ...
+	static constexpr float kNoSinkSpeed = 41.2f;      ///< [m/s] (80 kt) ... and none above: brake first, then descend
 
 	AlphaFilter<float> _vel_z_filter{kVerticalVelocityTimeConstant};
 	AlphaFilter<matrix::Vector2f> _accel_filter{kAccelerationFilterTimeConstant};

@@ -172,9 +172,13 @@ float FlightTaskTransition::computeVerticalVelocityTarget() const
 		return 0.f;
 	}
 
+	// Sink schedule over horizontal speed: VZLO below 30 kt (vortex ring state), blending to VZ at 50-60 kt, then
+	// fading to 0 at 80 kt. Descending at speed adds the energy the braking has to remove: a wing-borne Mk-7
+	// started at 72 m/s, descended 295 m at 7 m/s and was still at 72 m/s after 80 s (SITL HQ01 run 4).
 	const float speed = matrix::Vector2f(_velocity).norm();
 	const float blend = math::constrain((speed - kLowSpeedSink) / (kFullSpeedSink - kLowSpeedSink), 0.f, 1.f);
-	const float sink_limit = _param_vt_b_trans_vzlo + (_param_vt_b_trans_vz - _param_vt_b_trans_vzlo) * blend;
+	const float fade = 1.f - math::constrain((speed - kFullSinkMaxSpeed) / (kNoSinkSpeed - kFullSinkMaxSpeed), 0.f, 1.f);
+	const float sink_limit = (_param_vt_b_trans_vzlo + (_param_vt_b_trans_vz - _param_vt_b_trans_vzlo) * blend) * fade;
 	const float floor_alt = land.alt + _param_vt_b_trans_hmin;
 	return math::constrain((altitude - floor_alt) / kAltitudeCaptureTimeConstant, 0.f, sink_limit);
 }
