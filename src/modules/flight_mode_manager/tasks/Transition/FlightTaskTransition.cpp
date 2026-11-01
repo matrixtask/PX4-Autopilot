@@ -50,6 +50,7 @@ FlightTaskTransition::FlightTaskTransition()
 	param_get(param_find("VT_B_TRANS_VZ"), &_param_vt_b_trans_vz);
 	param_get(param_find("VT_B_TRANS_VZLO"), &_param_vt_b_trans_vzlo);
 	param_get(param_find("VT_B_TRANS_HMIN"), &_param_vt_b_trans_hmin);
+	param_get(param_find("VT_F_YAW_HOLD"), &_param_vt_f_yaw_hold);
 }
 
 bool FlightTaskTransition::activate(const trajectory_setpoint_s &last_setpoint)
@@ -68,6 +69,7 @@ bool FlightTaskTransition::activate(const trajectory_setpoint_s &last_setpoint)
 
 	if (_sub_vehicle_status.get().in_transition_to_fw) {
 		_gear.landing_gear = landing_gear_s::GEAR_UP;
+		_transition_yaw = _yaw; // navigator aligned the nose with the next waypoint (MIS_YAW_ERR) before this
 
 	} else {
 		_gear.landing_gear = landing_gear_s::GEAR_DOWN;
@@ -117,8 +119,18 @@ bool FlightTaskTransition::update()
 
 	_acceleration_setpoint.xy() = tanf(tilt_setpoint) * CONSTANTS_ONE_G * horizontal_acceleration_direction;
 
-	_yaw_setpoint = NAN;
-	_yawspeed_setpoint = 0.f;
+	// Upstream commands zero yaw rate only, so the heading drifts while the MC yaw authority is still needed
+	// (Mk-7 EM3: +16 deg from the pusher reaction torque, then a 20 deg bank and 34 m sink at FW entry).
+	// VT_F_YAW_HOLD holds the heading the front transition started with.
+	if (_sub_vehicle_status.get().in_transition_to_fw && _param_vt_f_yaw_hold == 1 && PX4_ISFINITE(_transition_yaw)) {
+		_yaw_setpoint = _transition_yaw;
+		_yawspeed_setpoint = NAN;
+
+	} else {
+		_yaw_setpoint = NAN;
+		_yawspeed_setpoint = 0.f;
+	}
+
 	return ret;
 }
 

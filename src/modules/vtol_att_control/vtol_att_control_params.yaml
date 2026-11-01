@@ -66,6 +66,15 @@ parameters:
       max: 10.0
       increment: 0.5
       decimal: 1
+    VT_F_YAW_HOLD:
+      description:
+        short: Hold the heading during the front transition
+        long: |-
+          Auto modes: hold the heading the front transition started with (navigator aligns it with the next
+          waypoint first, MIS_YAW_ERR) instead of only commanding zero yaw rate. Prevents heading drift from
+          pusher reaction torque while the multicopter yaw authority fades. 0 = upstream behaviour.
+      type: boolean
+      default: 0
     VT_B_TRANS_VZ:
       description:
         short: Descent rate during back transition

@@ -1,0 +1,409 @@
+#!/bin/sh
+#
+# @name Gazebo teTra_mk-7_EM3
+#
+# @type Standard VTOL
+#
+
+# Mk-7 EM3 (Gazebo model teTra_mk-7_EM3): EM2 outer shape with the 2026-10-29 measured CG, 1560 kg,
+# lift-rotor thrust coefficient 0.0424 (EM2 0.0371) and the beta 26 deg pusher (0.0556, EM2 0.0443).
+# Derived from 22001 (EM2); only the values below differ:
+#   CA_ROTORn_PX/PY/PZ  rotor positions relative to the whole-vehicle CG (+0.221, +0.010, +0.198 in the model frame)
+#   CA_ROTOR12_KM       pusher moment coefficient 0.231 (model momentConstant)
+#   SIM_GZ_EC_MAX13     pusher max speed 249.6 rad/s (model maxRotVelocity)
+#   MPC_THR_HOVER, VT_LIFT_HND_THR  0.42: thrust per rotor 15304 N/(12 cos 8 deg)=1288 N -> omega 174.3 rad/s
+#                       -> u=(174.3-37.38)/211.85=0.646 -> T=u^2=0.42 (the same arithmetic gives 0.49 for EM2)
+# CA_AIRFRAME stays 22001: same rotor/surface layout, values come from the CA_* parameters.
+
+. ${R}etc/init.d/rc.vtol_defaults
+
+PX4_SIMULATOR=${PX4_SIMULATOR:=gz}
+PX4_GZ_WORLD=${PX4_GZ_WORLD:=default}
+PX4_SIM_MODEL=${PX4_SIM_MODEL:=teTra_mk-7_EM3}
+
+param set-default SIM_GZ_EN 1
+
+param set-default SENS_EN_ARSPDSIM 1
+
+# Airspeed: use the (simulated) sensor as primary and disable the innovation
+# checks that otherwise reject valid airspeed during fast acceleration / the
+# rotors-off FW handoff (validated airspeed was getting stuck near 0 -> blind TECS).
+# Baked in here so they take effect at boot (runtime MAVLink set was unreliable).
+param set-default ASPD_PRIMARY 1
+param set-default ASPD_DO_CHECKS 0
+param set-default ASPD_FALLBACK 1
+
+# Height reference = baro, GNSS altitude not fused (SITL only).
+# The gz world is flat but the gz NavSat sensor reports WGS84 altitude, which rises by d^2/2R with
+# distance d from the world origin (+236 m at 55 km). With the default GNSS height reference the
+# WK01 run flew into the ground at 54.8 km while the EKF read 236 m (see mk7_mission CHANGELOG §7).
+# gz NavSat velocity is the flat local velocity, so lat/lon + 3D velocity stay fused.
+# Real aircraft: keep the defaults (EKF2_HGT_REF 1, EKF2_GPS_CTRL 7).
+param set-default EKF2_HGT_REF 0
+param set-default EKF2_GPS_CTRL 5
+
+# TODO: Enable motor failure detection when the
+# VTOL no longer reports 0A for all ESCs in SITL
+param set-default FD_ACT_EN 0
+
+param set-default CA_AIRFRAME 22001
+param set-default COM_PREARM_MODE 2
+
+
+param set-default CA_ROTOR_COUNT 13
+
+# ============================================
+# Lift rotors (Rotor 0-11)
+# ============================================
+
+# Rotor 0-5: Lower configuration (Y-negative side)
+param set-default CA_ROTOR0_PX   3.786
+param set-default CA_ROTOR0_PY  -1.440
+param set-default CA_ROTOR0_PZ  -0.732
+param set-default CA_ROTOR0_KM  -0.08784
+param set-default CA_ROTOR0_AX   0.0
+param set-default CA_ROTOR0_AY  -0.13917
+param set-default CA_ROTOR0_AZ  -0.99027
+
+param set-default CA_ROTOR1_PX   1.705
+param set-default CA_ROTOR1_PY  -1.440
+param set-default CA_ROTOR1_PZ  -0.732
+param set-default CA_ROTOR1_KM   0.08784
+param set-default CA_ROTOR1_AX   0.0
+param set-default CA_ROTOR1_AY   0.13917
+param set-default CA_ROTOR1_AZ  -0.99027
+
+param set-default CA_ROTOR2_PX   1.705
+param set-default CA_ROTOR2_PY  -3.990
+param set-default CA_ROTOR2_PZ  -0.732
+param set-default CA_ROTOR2_KM  -0.08784
+param set-default CA_ROTOR2_AX   0.0
+param set-default CA_ROTOR2_AY  -0.13917
+param set-default CA_ROTOR2_AZ  -0.99027
+
+
+param set-default CA_ROTOR3_PX  -2.147
+param set-default CA_ROTOR3_PY  -3.990
+param set-default CA_ROTOR3_PZ  -0.732
+param set-default CA_ROTOR3_KM  -0.08784
+param set-default CA_ROTOR3_AX   0.0
+param set-default CA_ROTOR3_AY   0.13917
+param set-default CA_ROTOR3_AZ  -0.99027
+
+param set-default CA_ROTOR4_PX  -2.147
+param set-default CA_ROTOR4_PY  -1.440
+param set-default CA_ROTOR4_PZ  -0.732
+param set-default CA_ROTOR4_KM   0.08784
+param set-default CA_ROTOR4_AX   0.0
+param set-default CA_ROTOR4_AY  -0.13917
+param set-default CA_ROTOR4_AZ  -0.99027
+
+param set-default CA_ROTOR5_PX  -4.228
+param set-default CA_ROTOR5_PY  -1.440
+param set-default CA_ROTOR5_PZ  -0.732
+param set-default CA_ROTOR5_KM  -0.08784
+param set-default CA_ROTOR5_AX   0.0
+param set-default CA_ROTOR5_AY   0.13917
+param set-default CA_ROTOR5_AZ  -0.99027
+
+# Rotor 6-11: Upper configuration (Y-positive side, Y-mirror symmetric)
+param set-default CA_ROTOR6_PX  -4.228
+param set-default CA_ROTOR6_PY   1.460
+param set-default CA_ROTOR6_PZ  -0.732
+param set-default CA_ROTOR6_KM   0.08784
+param set-default CA_ROTOR6_AX   0.0
+param set-default CA_ROTOR6_AY  -0.13917
+param set-default CA_ROTOR6_AZ  -0.99027
+
+param set-default CA_ROTOR7_PX  -2.147
+param set-default CA_ROTOR7_PY   1.460
+param set-default CA_ROTOR7_PZ  -0.732
+param set-default CA_ROTOR7_KM  -0.08784
+param set-default CA_ROTOR7_AX   0.0
+param set-default CA_ROTOR7_AY   0.13917
+param set-default CA_ROTOR7_AZ  -0.99027
+
+param set-default CA_ROTOR8_PX  -2.147
+param set-default CA_ROTOR8_PY   4.010
+param set-default CA_ROTOR8_PZ  -0.732
+param set-default CA_ROTOR8_KM   0.08784
+param set-default CA_ROTOR8_AX   0.0
+param set-default CA_ROTOR8_AY  -0.13917
+param set-default CA_ROTOR8_AZ  -0.99027
+
+param set-default CA_ROTOR9_PX   1.705
+param set-default CA_ROTOR9_PY   4.010
+param set-default CA_ROTOR9_PZ  -0.732
+param set-default CA_ROTOR9_KM   0.08784
+param set-default CA_ROTOR9_AX   0.0
+param set-default CA_ROTOR9_AY   0.13917
+param set-default CA_ROTOR9_AZ  -0.99027
+
+param set-default CA_ROTOR10_PX  1.705
+param set-default CA_ROTOR10_PY  1.460
+param set-default CA_ROTOR10_PZ -0.732
+param set-default CA_ROTOR10_KM -0.08784
+param set-default CA_ROTOR10_AX  0.0
+param set-default CA_ROTOR10_AY -0.13917
+param set-default CA_ROTOR10_AZ -0.99027
+
+param set-default CA_ROTOR11_PX  3.786
+param set-default CA_ROTOR11_PY  1.460
+param set-default CA_ROTOR11_PZ -0.732
+param set-default CA_ROTOR11_KM  0.08784
+param set-default CA_ROTOR11_AX  0.0
+param set-default CA_ROTOR11_AY  0.13917
+param set-default CA_ROTOR11_AZ -0.99027
+
+# ============================================
+# Cruise propeller (Rotor 12)
+# ============================================
+# Cruise prop uses an E-PROPS CCW pusher propeller; axis points forward along body +X.
+param set-default CA_ROTOR12_PX -2.021
+param set-default CA_ROTOR12_PY  0.010
+param set-default CA_ROTOR12_PZ -0.052
+param set-default CA_ROTOR12_KM  0.231
+param set-default CA_ROTOR12_AX  1.0
+param set-default CA_ROTOR12_AY  0.0
+param set-default CA_ROTOR12_AZ  0.0
+
+# ============================================
+# Gazebo ESC Configuration
+# ============================================
+
+# ESC function mapping (mapping rotor outputs to ESC channels)
+param set-default SIM_GZ_EC_FUNC1   101
+param set-default SIM_GZ_EC_FUNC2   102
+param set-default SIM_GZ_EC_FUNC3   103
+param set-default SIM_GZ_EC_FUNC4   104
+param set-default SIM_GZ_EC_FUNC5   105
+param set-default SIM_GZ_EC_FUNC6   106
+param set-default SIM_GZ_EC_FUNC7   107
+param set-default SIM_GZ_EC_FUNC8   108
+param set-default SIM_GZ_EC_FUNC9   109
+param set-default SIM_GZ_EC_FUNC10  110
+param set-default SIM_GZ_EC_FUNC11  111
+param set-default SIM_GZ_EC_FUNC12  112
+param set-default SIM_GZ_EC_FUNC13  113
+
+# ESC speed command limits. Lift rotor 0-11 max follows H4T130 2380 RPM = 249.23 rad/s.
+# Rotor 12 follows HK-UK3-3B 24 deg scaled to 180 cm: 2400 RPM = 251.327 rad/s.
+param set-default SIM_GZ_EC_MIN1    37.38
+param set-default SIM_GZ_EC_MIN2    37.38
+param set-default SIM_GZ_EC_MIN3    37.38
+param set-default SIM_GZ_EC_MIN4    37.38
+param set-default SIM_GZ_EC_MIN5    37.38
+param set-default SIM_GZ_EC_MIN6    37.38
+param set-default SIM_GZ_EC_MIN7    37.38
+param set-default SIM_GZ_EC_MIN8    37.38
+param set-default SIM_GZ_EC_MIN9    37.38
+param set-default SIM_GZ_EC_MIN10   37.38
+param set-default SIM_GZ_EC_MIN11   37.38
+param set-default SIM_GZ_EC_MIN12   37.38
+param set-default SIM_GZ_EC_MIN13   0
+
+param set-default SIM_GZ_EC_MAX1    249.23
+param set-default SIM_GZ_EC_MAX2    249.23
+param set-default SIM_GZ_EC_MAX3    249.23
+param set-default SIM_GZ_EC_MAX4    249.23
+param set-default SIM_GZ_EC_MAX5    249.23
+param set-default SIM_GZ_EC_MAX6    249.23
+param set-default SIM_GZ_EC_MAX7    249.23
+param set-default SIM_GZ_EC_MAX8    249.23
+param set-default SIM_GZ_EC_MAX9    249.23
+param set-default SIM_GZ_EC_MAX10   249.23
+param set-default SIM_GZ_EC_MAX11   249.23
+param set-default SIM_GZ_EC_MAX12   249.23
+param set-default SIM_GZ_EC_MAX13   249.6
+
+# ============================================
+# Vehicle Configuration
+# ============================================
+
+# Initial multicopter vertical tuning for the 1560 kg Mk-7 model.
+# Hover thrust: the hover-thrust estimator converged to ~0.50 in SITL (WK01 run 6), consistent with 0.49.
+# Gazebo MulticopterMotorModel (velocity): thrust = k*omega^2 with omega linear in the command, i.e. quadratic
+# thrust. THR_MDL_FAC was the default 0 (linear) -> hover cmd 0.70 was really 49 % thrust, and the transition
+# lift-handoff floor delivered only (cmd)^2 of the intended rotor lift (sink before/after FW entry, runs 2-5).
+# Real rotors are also ~quadratic. MC rate P/D scaled x1.4 (= d thrust/d cmd at hover, 2*0.70) to keep the
+# loop gain that was tuned with the linear model.
+param set-default THR_MDL_FAC 1.0
+param set-default MPC_THR_HOVER 0.42
+param set-default MPC_THR_MIN 0.05
+param set-default MPC_THR_XY_MARG 0.08
+param set-default MPC_TKO_SPEED 1.0
+param set-default MPC_TKO_RAMP_T 4.0
+param set-default MPC_LAND_SPEED 0.6
+param set-default MPC_Z_VEL_MAX_DN 1.5
+param set-default NAV_ACC_RAD 2
+param set-default NAV_DLL_ACT 2
+
+# Servo (control surface) configuration
+param set-default SIM_GZ_SV_FUNC1 201
+param set-default SIM_GZ_SV_FUNC2 202
+param set-default SIM_GZ_SV_FUNC3 203
+param set-default SIM_GZ_SV_FUNC4 204
+param set-default SIM_GZ_SV_FUNC5 205
+# v7 transition flaps: PX4 output disabled (0) for the SITL transition experiment; deployed directly in gz
+# (gz-topic) during the transition so the flapped stall (~32 m/s) is at/below the handoff airspeed.
+param set-default SIM_GZ_SV_FUNC6 0
+param set-default SIM_GZ_SV_FUNC7 0
+
+
+
+param set-default COM_RC_IN_MODE 1
+
+# Control surface allocation (elevator, ailerons, central flaps)
+param set-default CA_SV_CS_COUNT 7
+
+param set-default CA_SV_CS0_TYPE 1
+param set-default CA_SV_CS0_TRQ_R -0.5
+param set-default CA_SV_CS1_TYPE 2
+param set-default CA_SV_CS1_TRQ_R 0.5
+# Flaperon: ailerons also take a symmetric (flap) component = the transition DLC.
+param set-default CA_SV_CS0_FLAP 0.4
+param set-default CA_SV_CS1_FLAP 0.4
+param set-default CA_SV_CS2_TYPE 3
+param set-default CA_SV_CS2_TRQ_P 1
+param set-default CA_SV_CS3_TYPE 4
+param set-default CA_SV_CS3_TRQ_Y 1
+param set-default CA_SV_CS4_TYPE 4
+param set-default CA_SV_CS4_TRQ_Y 1
+# v7 central TRANSITION high-lift flaps: LeftFlap=9, RightFlap=10 (linear-actuator, slow).
+# Deploy in transition window 70-100 kt (raises CL_max 1.3->1.79, stall 78->66 kt), retract for 140 kt cruise.
+# Driven by flaps setpoint (default 0 = retracted); airspeed/transition schedule is the proposed control step.
+param set-default CA_SV_CS5_TYPE 9
+param set-default CA_SV_CS6_TYPE 10
+
+# ============================================
+# Flight Controller Tuning Parameters
+# ============================================
+
+# Fixed-wing control parameters
+param set-default FW_PR_FF 0.2
+param set-default FW_PR_P 0.9
+param set-default FW_PSP_OFF 2
+param set-default FW_P_LIM_MIN -15
+param set-default FW_RR_FF 0.1
+param set-default FW_RR_P 1.0
+param set-default FW_THR_MAX 1.0
+param set-default FW_THR_MIN 0.05
+param set-default FW_T_SINK_MIN 2.2
+
+# Multicopter control parameters
+param set-default MC_AIRMODE 0
+param set-default MC_ROLL_P 0.6
+param set-default MC_PITCH_P 0.45
+param set-default MC_YAW_P 0.25
+param set-default MC_YAW_WEIGHT 0.3
+param set-default MC_ROLLRATE_P 0.35
+param set-default MC_PITCHRATE_P 0.35
+param set-default MC_YAWRATE_P 0.49
+param set-default MC_ROLLRATE_I 0.03
+param set-default MC_PITCHRATE_I 0.03
+param set-default MC_YAWRATE_I 0.002
+param set-default MC_ROLLRATE_D 0.035
+param set-default MC_PITCHRATE_D 0.035
+param set-default MC_YAWRATE_D 0.004
+param set-default MC_ROLLRATE_K 1.0
+param set-default MC_PITCHRATE_K 1.0
+param set-default MC_YAWRATE_K 1.0
+param set-default MC_YAWRATE_MAX 15
+
+# Mission and position control
+param set-default MIS_TAKEOFF_ALT 30
+param set-default MPC_YAW_MODE 4
+
+param set-default WV_EN 0
+param set-default MPC_TILTMAX_AIR 16
+param set-default MPC_TILTMAX_LND 5
+param set-default MPC_XY_P 0.25
+param set-default MPC_XY_CRUISE 10.0
+param set-default MPC_XY_VEL_MAX 12.0
+param set-default MPC_XY_VEL_P_ACC 0.75
+param set-default MPC_XY_VEL_I_ACC 0.055
+param set-default MPC_XY_VEL_D_ACC 0.42
+param set-default MPC_ACC_HOR 0.9
+param set-default MPC_XY_TRAJ_P 0.10
+
+# VTOL (Vertical Takeoff and Landing) configuration
+param set-default VT_FWD_THRUST_EN 0
+param set-default VT_FWD_THRUST_SC 0
+param set-default VT_PITCH_MIN -5
+# v7-fw: source-grounded transition tuning. ROOT CAUSE was VT_F_TR_OL_TM (default 6 s): the early
+# quadchute (vtol_type.cpp:332) cancels the transition if airspeed < VT_ARSP_BLEND after this time, and the
+# heavy Mk-7 can't reach a high blend airspeed in 6 s -> always quadchuted. Fix: long OL_TM + reachable
+# blend/trans airspeeds (see VT_ARSP_BLEND/TRANS below: 33/50 m/s).
+# gentle pusher onset (slew 0.1 = ~8 s ramp) + moderate throttle 0.8 -> accelerate without the abrupt
+# nose/roll upset that THR=1.0 caused at the transition start (the divergence was at ~8 m/s, full rotors).
+param set-default VT_F_TRANS_THR 0.8
+param set-default VT_PSHER_SLEW 0.1
+param set-default VT_F_TRANS_DUR 15
+# 2026-11-01: the 30 s timeout quad-chuted at 27 m/s in WK01 run 1 (linear thrust model, ~1.1 m/s^2).
+# With THR_MDL_FAC 1 the pusher (Motor13) also follows the quadratic model; run 6 reached 50 m/s in 36 s.
+# Keep margin: VT_F_TR_OL_TM 30->50 s, VT_TRANS_TIMEOUT 30->70 s.
+param set-default VT_F_TR_OL_TM 50
+param set-default VT_TRANS_TIMEOUT 70
+param set-default VT_TRANS_MIN_TM 4
+# Blend from 33 m/s (handoff 3.1, 152 m gate speed); transition complete at 50 m/s = 1.3 x clean stall
+# (CLmax 1.4, Veronte/EM3 analysis 2026-11-01). Handoff value 46 m/s (1.24 Vs) left no margin for the
+# first FW turn (SITL run 4). Previous 28/33 completed the transition below the 37 m/s stall.
+param set-default VT_ARSP_BLEND 33
+param set-default VT_ARSP_TRANS 50
+param set-default VT_B_TRANS_DUR 80  # 72 -> 10 m/s at 1.0 m/s^2 = 62 s; ending on time at 30 m/s left MC braking at 23 deg pitch (WK01 run 8)
+param set-default VT_TYPE 2
+
+# ============================================
+# Mission envelope (design values; previously injected at runtime by tetra_mk7_profile_smooth.py)
+# ============================================
+# Airspeeds [m/s]: clean stall 37 (DRO 72.5 KCAS), cruise 72 (140 kt), VNE 82 (160 kt).
+param set-default FW_AIRSPD_STALL 37
+param set-default FW_AIRSPD_MIN 42
+param set-default FW_AIRSPD_TRIM 60
+param set-default FW_AIRSPD_MAX 80
+param set-default FW_R_LIM 15
+param set-default FW_YD_GAIN 5.0
+param set-default MIS_DIST_1WP 0
+# Wing->rotor lift handoff (firmware feature from mk7 study, previously enabled only at runtime by the
+# offboard script). Rotors carry the wing's lift deficit, floor = 1-(CAS/72)^2: 0.68 of hover at 41 m/s.
+# Without it WK01 run 2 sank 20 m in the blend and quad-chuted. VT_LIFT_HND_THR = hover thrust (EM3 0.42) so the
+# rotors carry exactly the wing's lift deficit (quadratic thrust model, see THR_MDL_FAC).
+param set-default VT_LIFT_HND_V 72
+param set-default VT_LIFT_HND_THR 0.42
+# Transition altitude-loss abort = EM3 requirement (+-15 m around the target altitude during transitions).
+param set-default VT_QC_T_ALT_LOSS 15
+param set-default RTL_TYPE 3
+
+# ============================================
+# Operating profile: climbing / descending transitions and passenger-comfort limits (EM3)
+# ============================================
+# Source: route evaluation "optimizer_model_1410" (teTra HQ -> Fukushima, 849.5 s): 30 m vertical, then climb
+# while accelerating (<= 7 m/s, 0.03-0.15 g), cruise 140 kt, wing-borne descent <= 7 m/s, brake 0.1 g while
+# descending, sink tapered to 1.4 m/s below 30 kt, vertical landing from 30 m above the pad.
+param set-default VT_F_TRANS_VZ 7.0  # climb during the front transition (new, FlightTaskTransition); evaluation 7 m/s. 5 m/s left 135 m AGL at 1.3 km (test 1)
+param set-default MPC_Z_VEL_MAX_UP 7.0  # caps the transition climb; MC take-off speed stays MPC_TKO_SPEED
+param set-default VT_B_TRANS_VZ 7.0  # descend during the back transition above 50 kt (new; evaluation 7 m/s)
+param set-default VT_B_TRANS_VZLO 1.4  # below 30 kt (vortex ring state), evaluation value
+param set-default VT_B_TRANS_HMIN 30  # level off 30 m above the pad, then vertical landing
+param set-default VT_B_VZ_PITCH 8.0  # deg per m/s of climb: pitch down in the back transition (new; +56 m without, +32 m with 3)
+param set-default VT_B_DEC_MSS 1.0  # 0.1 g braking (evaluation brake_g)
+param set-default FW_T_CLMB_R_SP 7.0  # auto climb rate (default 3 was the WK01 climb limit, pusher at 47 %)
+param set-default FW_T_CLMB_MAX 8.0
+param set-default FW_T_SINK_R_SP 7.0  # auto descent rate
+param set-default FW_T_SINK_MAX 8.0
+param set-default FW_THR_TRIM 0.27  # measured cruise throttle at 72 m/s (WK01 run 8, EM2 0.26); 0.70 made TECS lean on its integrator
+param set-default FW_R_TC 0.5  # 0.8 + 8 deg/s rate limit put NPFG into a +-15 deg bang-bang weave (+-50 deg heading, test 7)
+param set-default FW_P_TC 0.5
+param set-default FW_R_RMAX 15  # deg/s roll-rate limit (comfort; 8 was too slow for NPFG)
+param set-default FW_P_RMAX_POS 10  # deg/s
+param set-default FW_P_RMAX_NEG 10  # deg/s
+param set-default NPFG_PERIOD 20  # gentler path convergence (was 12)
+param set-default MPC_YAWRAUTO_MAX 6  # deg/s: at 10 the 11800 kg m^2 yaw axis overshot the alignment turn by 30 deg (test 8)
+param set-default MPC_JERK_AUTO 0.5
+param set-default MPC_ACC_UP_MAX 2.0
+param set-default MPC_ACC_DOWN_MAX 1.5
+param set-default VT_F_YAW_HOLD 1  # hold heading in the front transition (new; EM3 drifted 16 deg -> 20 deg bank at FW entry, test 5)
+param set-default MIS_YAW_ERR 5  # align the nose with the first leg before the transition (was 12 deg)
+param set-default MIS_YAW_TMT 30  # up to ~100 deg at MPC_YAWRAUTO_MAX 10 deg/s; 10 s timed out and triggered RTL (test 6)
+param set-default FW_P_LIM_MAX 15  # comfort: test 5 zoom-climbed at 22 deg after FW entry (default 30)
+param set-default MPC_YAWRAUTO_ACC 2  # deg/s^2

@@ -112,6 +112,7 @@ px4_add_romfs_files(
 	17002_flightgear_tf-g2
 
 	22001_gz_teTra_mk-7_EM2
+	22002_gz_teTra_mk-7_EM3
 
 	50000_gz_rover_differential
 	51000_gz_rover_ackermann

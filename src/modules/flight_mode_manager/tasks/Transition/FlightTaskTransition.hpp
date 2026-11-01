@@ -75,6 +75,8 @@ private:
 	float _param_vt_b_trans_vz{0.f};    ///< descent rate during back transition at speed [m/s], 0 = hold altitude
 	float _param_vt_b_trans_vzlo{0.f};  ///< descent rate limit at low speed (vortex ring state) [m/s]
 	float _param_vt_b_trans_hmin{0.f};  ///< lowest height above the back-transition target [m]
+	int32_t _param_vt_f_yaw_hold{0};     ///< hold the start heading during the front transition
+	float _transition_yaw{NAN};          ///< heading at the start of the front transition [rad]
 
 	static constexpr float kAltitudeCaptureTimeConstant = 5.0f; ///< [s] climb/descent rate fades out near the target
 	static constexpr float kLowSpeedSink = 15.4f;   ///< [m/s] (30 kt) below this only VT_B_TRANS_VZLO is allowed
