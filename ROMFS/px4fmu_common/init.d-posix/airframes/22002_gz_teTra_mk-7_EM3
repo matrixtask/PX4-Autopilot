@@ -40,7 +40,7 @@ param set-default ASPD_FALLBACK 1
 # gz NavSat velocity is the flat local velocity, so lat/lon + 3D velocity stay fused.
 # Real aircraft: keep the defaults (EKF2_HGT_REF 1, EKF2_GPS_CTRL 7).
 param set-default EKF2_HGT_REF 0
-param set-default EKF2_GPS_CTRL 5
+param set-default EKF2_GPS_CTRL 5  # SITL baseline (lat/lon + 3D velocity). The far-pad altitude estimate is still 8 m high (baro drift in SITL, HQ01 opt run 2); 1 (no GPS velocity) made it 14 m (run 4). Real aircraft: range finder for the landing
 
 # TODO: Enable motor failure detection when the
 # VTOL no longer reports 0A for all ESCs in SITL
@@ -288,7 +288,6 @@ param set-default FW_RR_FF 0.1
 param set-default FW_RR_P 1.0
 param set-default FW_THR_MAX 1.0
 param set-default FW_THR_MIN 0.05
-param set-default FW_T_SINK_MIN 2.2
 
 # Multicopter control parameters
 param set-default MC_AIRMODE 0
@@ -336,7 +335,7 @@ param set-default VT_PITCH_MIN -5
 # blend/trans airspeeds (see VT_ARSP_BLEND/TRANS below: 33/50 m/s).
 # gentle pusher onset (slew 0.1 = ~8 s ramp) + moderate throttle 0.8 -> accelerate without the abrupt
 # nose/roll upset that THR=1.0 caused at the transition start (the divergence was at ~8 m/s, full rotors).
-param set-default VT_F_TRANS_THR 0.8
+param set-default VT_F_TRANS_THR 1.0  # full pusher in the front transition (evaluation drag: 0.8 left the transition at 41 s)
 param set-default VT_PSHER_SLEW 0.1
 param set-default VT_F_TRANS_DUR 15
 # 2026-11-01: the 30 s timeout quad-chuted at 27 m/s in WK01 run 1 (linear thrust model, ~1.1 m/s^2).
@@ -387,11 +386,12 @@ param set-default VT_B_TRANS_VZLO 3.0  # below 30 kt: 0.23 vh (vh 13 m/s). V-22 
 param set-default VT_B_TRANS_HMIN 30  # level off 30 m above the pad, then vertical landing
 param set-default VT_B_DEC_MSS 2.0  # 0.2 g braking: back-transition-only sim optimum (mk7_mission tools/bt_sim.py; 0.25 g overshot 47 m at +-20 % model error)
 param set-default VT_B_DEC_I 0.3  # with VT_BFF_EN: decel trim gain [1/s] on top of the feed-forward (0 left 120 m overshoot at +-20 % model error)
-param set-default FW_T_CLMB_R_SP 7.0  # auto climb rate (default 3 was the WK01 climb limit, pusher at 47 %)
-param set-default FW_T_CLMB_MAX 8.0
+param set-default FW_T_CLMB_R_SP 3.0  # auto climb rate = what the pusher can do with the evaluation drag (3.3 m/s at full throttle, 53 m/s, test_ff_1)
+param set-default FW_T_CLMB_MAX 3.5  # TECS performance model: max climb at trim speed, full throttle
 param set-default FW_T_SINK_R_SP 7.0  # auto descent rate
 param set-default FW_T_SINK_MAX 8.0
-param set-default FW_THR_TRIM 0.27  # measured cruise throttle at 72 m/s (WK01 run 8, EM2 0.26); 0.70 made TECS lean on its integrator
+param set-default FW_THR_TRIM 0.90  # level-flight throttle with the evaluation drag (0.93 at 72 m/s, HQ01 opt run 1); 0.27 (clean airframe) kept 0.9 throttle in 5.5 m/s descents -> 81 m/s
+param set-default FW_T_SINK_MIN 10  # sink at idle and trim speed (parasite 0.61 m^2 + windmilling pusher)
 param set-default FW_R_TC 0.5  # 0.8 + 8 deg/s rate limit put NPFG into a +-15 deg bang-bang weave (+-50 deg heading, test 7)
 param set-default FW_P_TC 0.5
 param set-default FW_R_RMAX 15  # deg/s roll-rate limit (comfort; 8 was too slow for NPFG)
@@ -427,6 +427,7 @@ param set-default VT_B_SPOILER 1.0  # -45 deg (full) when VT_BFF_EN is off; with
 # FlaperonDrag 2 x 0.9 m^2 x sin 45; parasite CD0 0.0065 x 12 + base_cda 0.53 (evaluation CD0) + PropellerAero
 # windmilling 0.12 x 2.54 m^2; S pi AR e.
 param set-default VT_BFF_EN 1
+param set-default VT_BFF_LOBS 1  # lift observer: HQ01 opt run 3 had ~1.7x model lift with the spoiler in -> 22 m climb (bt_sim: 51 -> 6 m)
 param set-default VT_BFF_MASS 1560
 param set-default VT_BFF_SCLA 56.9
 param set-default VT_BFF_SPCL 6.6
