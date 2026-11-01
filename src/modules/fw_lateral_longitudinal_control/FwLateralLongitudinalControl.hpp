@@ -158,6 +158,8 @@ private:
 		(ParamFloat<px4::params::FW_T_TAS_TC>) _param_fw_t_tas_error_tc,
 		(ParamFloat<px4::params::FW_T_THR_DAMPING>) _param_fw_t_thr_damping,
 		(ParamFloat<px4::params::FW_T_VERT_ACC>) _param_fw_t_vert_acc,
+		(ParamFloat<px4::params::FW_T_REF_ACC>) _param_fw_t_ref_acc,
+		(ParamFloat<px4::params::FW_T_REF_JERK>) _param_fw_t_ref_jerk,
 		(ParamFloat<px4::params::FW_T_STE_R_TC>) _param_ste_rate_time_const,
 		(ParamFloat<px4::params::FW_T_SEB_R_FF>) _param_seb_rate_ff,
 		(ParamFloat<px4::params::FW_T_SPDWEIGHT>) _param_t_spdweight,

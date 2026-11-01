@@ -77,19 +77,60 @@ parameters:
       max: 80.0
       increment: 1.0
       decimal: 1
-    VT_LIFT_HND_RT:
+    VT_LIFT_HND_SLW:
       description:
-        short: Lift-rotor release time after the front transition
+        short: Lift-rotor handover slew rate after the front transition
         long: |-
-          After the front transition completes, the lift-rotor collective fades linearly from its value at the end
-          of the transition (a climbing transition leaves the rotors well above the VT_LIFT_HND_THR schedule) down
-          to that schedule over this time, instead of stepping. 0 = step (previous behaviour).
+          After the front transition the lift-rotor collective moves from its value at the end of the transition
+          to the airspeed schedule (VT_LIFT_HND_V / VT_LIFT_HND_THR), and after 25 s to zero, at no more than this
+          rate (hover-thrust units per second). 0 = no limit (step).
+      type: float
+      default: 0.0
+      unit: 1/s
+      min: 0.0
+      max: 1.0
+      decimal: 3
+      increment: 0.01
+    VT_LIFT_HND_KV:
+      description:
+        short: Lift-rotor climb-rate assist during the FW handover
+        long: |-
+          While the lift rotors still carry part of the weight after the front transition, they add this
+          collective per m/s of climb-rate error (TECS height-rate setpoint minus actual), weighted by their
+          remaining share, so the vehicle does not sink while the wing pitches up. 0 = off.
+      type: float
+      default: 0.0
+      min: 0.0
+      max: 0.2
+      decimal: 3
+      increment: 0.005
+    VT_SIG_TAU:
+      description:
+        short: Airspeed filter time constant for the rotor/wing schedules
+        long: |-
+          The airspeed that drives the rotor/wing schedules (transition blend, lift-handoff floor, FW handover)
+          is first-order filtered with this time constant, so gusts and sensor noise do not move the actuator
+          split. 0 = unfiltered.
       type: float
       default: 0.0
       unit: s
-      min: 0
-      max: 10
+      min: 0.0
+      max: 5.0
       decimal: 1
+      increment: 0.1
+    VT_SIG_RATE:
+      description:
+        short: Maximum rate of the rotor weight in the front transition
+        long: |-
+          The MC (rotor) weight in the front transition follows the airspeed schedule at no more than this rate.
+          0 = unlimited.
+      type: float
+      default: 0.0
+      unit: 1/s
+      min: 0.0
+      max: 2.0
+      decimal: 2
+      increment: 0.05
     VT_LIFT_HND_THR:
       description:
         short: Lift-rotor collective at the FW handoff (hover-thrust scale) [-]

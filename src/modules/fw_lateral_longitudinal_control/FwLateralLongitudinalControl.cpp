@@ -101,6 +101,7 @@ FwLateralLongitudinalControl::parameters_update()
 	_tecs.set_integrator_gain_pitch(_param_fw_t_I_gain_pit.get());
 	_tecs.set_throttle_slewrate(_param_fw_thr_slew_max.get());
 	_tecs.set_vertical_accel_limit(_param_fw_t_vert_acc.get());
+	_tecs.set_reference_limits(_param_fw_t_ref_acc.get(), _param_fw_t_ref_jerk.get());
 	_tecs.set_roll_throttle_compensation(_param_fw_t_rll2thr.get());
 	_tecs.set_pitch_damping(_param_fw_t_ptch_damp.get());
 	_tecs.set_altitude_error_time_constant(_param_fw_t_h_error_tc.get());
@@ -308,8 +309,10 @@ void FwLateralLongitudinalControl::Run()
 
 			// roll slew rate
 			const float rsnap_t = _param_fw_r_snap_t.get();
+
 			if (rsnap_t > FLT_EPSILON) {
 				roll_body = updateRollSnapShaper(roll_body, control_interval, rsnap_t);
+
 			} else {
 				roll_body = _roll_slew_rate.update(roll_body, control_interval);
 			}

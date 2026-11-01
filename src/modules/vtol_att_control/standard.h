@@ -84,6 +84,21 @@ private:
 	hrt_abstime _fw_mode_entry_time{0};
 	float _front_transition_end_thrust{0.f}; ///< lift-rotor collective (body z, up < 0) at the end of the front transition
 
+	// Airspeed schedule (Veronte-style sigma): every rotor/wing schedule is a function of the filtered airspeed, and the
+	// rotor share changes at a bounded rate, so a phase change never steps an actuator group.
+	float updateScheduleAirspeed(); ///< first-order filtered CAS (VT_SIG_TAU), NAN without airspeed
+	float _cas_schedule{NAN};
+	hrt_abstime _cas_schedule_time{0};
+	float _ft_mc_weight{1.f};       ///< rate-limited MC weight in the front transition (VT_SIG_RATE)
+	hrt_abstime _ft_weight_time{0};
+
+	// Rotor -> wing handover after the front transition: the lift-rotor collective slews (VT_LIFT_HND_SLW) from its
+	// value at the end of the transition to the airspeed schedule and then to zero, with a climb-rate assist
+	// (VT_LIFT_HND_KV) while the wing takes the load.
+	float liftHandoverCollective(float cas);
+	float _handover_collective{0.f}; ///< lift-rotor up-thrust [0, 1] in FW
+	hrt_abstime _handover_time{0};
+
 	// Feed-forward back-transition brake (VT_BFF_EN, FlightTaskTransition): pitch comes with the MC attitude setpoint
 	uORB::Subscription _brake_setpoint_sub{ORB_ID(vtol_brake_setpoint)};
 	vtol_brake_setpoint_s _brake_setpoint{};
@@ -98,7 +113,10 @@ private:
 					(ParamFloat<px4::params::VT_B_RAMP_MIN>) _param_vt_b_ramp_min,
 					(ParamFloat<px4::params::VT_LIFT_HND_V>) _param_vt_lift_hnd_v,
 					(ParamFloat<px4::params::VT_LIFT_HND_THR>) _param_vt_lift_hnd_thr,
-					(ParamFloat<px4::params::VT_LIFT_HND_RT>) _param_vt_lift_hnd_rt,
+					(ParamFloat<px4::params::VT_LIFT_HND_SLW>) _param_vt_lift_hnd_slw,
+					(ParamFloat<px4::params::VT_LIFT_HND_KV>) _param_vt_lift_hnd_kv,
+					(ParamFloat<px4::params::VT_SIG_TAU>) _param_vt_sig_tau,
+					(ParamFloat<px4::params::VT_SIG_RATE>) _param_vt_sig_rate,
 					(ParamFloat<px4::params::VT_FW_RDIFF>) _param_vt_fw_rdiff,
 					(ParamFloat<px4::params::VT_FW_MC_THR>) _param_vt_fw_mc_thr,
 					(ParamBool<px4::params::VT_BFF_EN>) _param_vt_bff_en,

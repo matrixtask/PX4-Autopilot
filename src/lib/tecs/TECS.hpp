@@ -633,6 +633,19 @@ public:
 	void set_pitch_damping(float damping) { _control_param.pitch_damping_gain = damping; }
 	void set_vertical_accel_limit(float limit) { _reference_param.vert_accel_limit = limit; _control_param.vert_accel_limit = limit; };
 
+	/**
+	 * Shape the altitude / height-rate reference (not the pitch-rate limit) with its own acceleration and jerk limits,
+	 * so a change of the commanded climb or sink rate becomes an S-curve. Call after set_vertical_accel_limit().
+	 * @param accel [m/s^2] reference acceleration limit, <= 0: use the vertical acceleration limit
+	 * @param jerk [m/s^3] reference jerk limit, <= 0: unlimited
+	 */
+	void set_reference_limits(float accel, float jerk)
+	{
+		if (accel > FLT_EPSILON) { _reference_param.vert_accel_limit = accel; }
+
+		_reference_param.jerk_max = (jerk > FLT_EPSILON) ? jerk : 1000.0f;
+	}
+
 	void set_speed_weight(float weight) { _control_param.pitch_speed_weight = weight; };
 	void set_airspeed_error_time_constant(float time_const) { _control_param.airspeed_error_gain = 1.0f / math::max(time_const, 0.1f); };
 

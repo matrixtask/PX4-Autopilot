@@ -286,6 +286,10 @@ param set-default FW_PSP_OFF 2
 param set-default FW_P_LIM_MIN -15
 param set-default FW_RR_FF 0.1
 param set-default FW_RR_P 1.0
+# Pusher torque / slipstream roll trim (HQ01 v7: roll integrator 0.07 at 0.18 throttle, 0.19 at 0.77, saturated at 0.2 in
+# cruise). Feed-forward instead of the integrator, so a throttle change is not a roll upset (FW entry: -14 deg).
+param set-default TRIM_ROLL 0.035
+param set-default FW_DTRIM_R_THR 0.20
 param set-default FW_THR_MAX 1.0
 param set-default FW_THR_MIN 0.05
 
@@ -372,9 +376,18 @@ param set-default MIS_DIST_1WP 0
 # rotors carry exactly the wing's lift deficit (quadratic thrust model, see THR_MDL_FAC).
 param set-default VT_LIFT_HND_V 72
 param set-default VT_LIFT_HND_THR 0.42
-# 11/02 (Tasuku: 前方遷移の終わりで揺れる): the climbing transition left the lift rotors at 0.52, then they stepped to the
-# handoff schedule (0.21): 3.7 m/s climb -> 3.6 m/s sink and a 9.5 deg/s roll. Release them over 3 s instead.
-param set-default VT_LIFT_HND_RT 8.0  # 3 s still left a 3.6 m/s sink (HQ01 v6): give TECS time to raise the angle of attack
+# 11/02 (Tasuku: 前方遷移の終わりで揺れる / フェーズ間を滑らかに): rotor -> wing handover after the front transition.
+# The climbing transition leaves the rotors at ~0.58; stepping (v5) or fading them linearly (VT_LIFT_HND_RT, v6/v7) to the
+# 0.22 schedule sank the vehicle 1.8-3.6 m/s, and the schedule was cut 0.21 -> 0 in one step 25 s after FW entry (nz 0.65).
+# Now: slew at <= 0.08/s from the end-of-transition value to the schedule and then to 0, plus a climb-rate assist of
+# 0.04 per m/s of TECS climb-rate error weighted by the remaining rotor share (Veronte: vertical-speed loop on the
+# rotors fades with sigma, path-angle loop on the wing takes over).
+param set-default VT_LIFT_HND_SLW 0.08
+param set-default VT_LIFT_HND_KV 0.04
+# Airspeed schedule (Veronte sigma): filtered CAS (tau 2 s) drives every rotor/wing schedule; rotor weight in the
+# front transition changes at <= 0.2/s.
+param set-default VT_SIG_TAU 2.0
+param set-default VT_SIG_RATE 0.2
 # Transition altitude-loss abort = EM3 requirement (+-15 m around the target altitude during transitions).
 param set-default VT_QC_T_ALT_LOSS 15
 param set-default RTL_TYPE 3
@@ -399,6 +412,14 @@ param set-default FW_T_CLMB_MAX 3.5  # TECS performance model: max climb at trim
 # pad + 115 m (HQ01: vertical descent 54.7 -> ~5 s).
 param set-default FW_T_SINK_R_SP 12.0  # auto descent rate (was 7)
 param set-default FW_T_SINK_MAX 13.0   # (was 8)
+# Smooth phase changes in FW (11/02, Tasuku: フェーズ間の急峻な変化): the TECS altitude reference had no jerk limit and
+# FW_T_VERT_ACC 7 m/s^2, so every waypoint switch stepped the height-rate setpoint (0 <-> -10 m/s in ~2 s, nz 0.55-1.45 g,
+# pusher 0.2 <-> 1.0). Reference S-curve at 0.1 g / 0.05 g/s (evaluation comfort limit 0.03-0.15 g); FW_T_VERT_ACC keeps
+# limiting the pitch rate only. Each leg is flown as a straight glide path (no step-hold-step at short legs).
+param set-default FW_T_REF_ACC 1.0
+param set-default FW_T_REF_JERK 0.5
+param set-default FW_WP_GLIDE 1
+param set-default FW_THR_SLEW_MAX 0.3
 # C (11/02, Tasuku A+B+C): beyond the idle sink (FW_T_SINK_MIN 10) the spoilers make up the drag (full spoiler at
 # 72 m/s ~ +4 kN, ~ +18 m/s sink); fw_mode_manager deploys them on the TECS sink shortfall at minimum throttle.
 param set-default FW_SPOILERS_DESC 0.6

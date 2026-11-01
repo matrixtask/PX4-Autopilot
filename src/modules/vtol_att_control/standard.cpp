@@ -208,7 +208,7 @@ void Standard::update_transition_state()
 	float lift_floor = _param_vt_b_ramp_min.get();
 	{
 		const float vL = _param_vt_lift_hnd_v.get();
-		const float cas = _attc->get_calibrated_airspeed();
+		const float cas = updateScheduleAirspeed();
 
 		if (vL > FLT_EPSILON && PX4_ISFINITE(cas) && cas < vL) {
 			const float r = cas / vL;
@@ -251,6 +251,21 @@ void Standard::update_transition_state()
 		} else if (!PX4_ISFINITE(_attc->get_calibrated_airspeed())) {
 			mc_weight = 1.0f - _time_since_trans_start / getMinimumFrontTransitionTime();
 			mc_weight = math::constrain(2.0f * mc_weight, 0.0f, 1.0f);
+		}
+
+		// The MC weight follows the airspeed schedule at a bounded rate (VT_SIG_RATE), never faster.
+		if (_param_vt_sig_rate.get() > FLT_EPSILON) {
+			if (_ft_weight_time == 0 || now > _ft_weight_time + 500_ms) {
+				_ft_mc_weight = 1.f;
+
+			} else {
+				const float dt = math::constrain((now - _ft_weight_time) * 1e-6f, 0.f, 0.05f);
+				const float step = _param_vt_sig_rate.get() * dt;
+				_ft_mc_weight = math::constrain(mc_weight, _ft_mc_weight - step, _ft_mc_weight + step);
+			}
+
+			_ft_weight_time = now;
+			mc_weight = _ft_mc_weight;
 		}
 
 		// ramp up FW_PSP_OFF
@@ -394,6 +409,7 @@ void Standard::fill_actuator_outputs()
 
 		_thrust_setpoint_0->xyz[0] = _pusher_throttle;
 		_fw_mode_entry_time = 0; // reset the FW-handoff ramp while not in FW
+		_handover_time = 0;
 		break;
 
 	case vtol_mode::TRANSITION_TO_FW:
@@ -413,6 +429,7 @@ void Standard::fill_actuator_outputs()
 		_torque_setpoint_1->xyz[2] = _vehicle_torque_setpoint_virtual_fw->xyz[2];
 		_thrust_setpoint_0->xyz[0] = _pusher_throttle;
 		_fw_mode_entry_time = 0; // reset the FW-handoff ramp while still transitioning
+		_handover_time = 0;
 
 		if (_vtol_mode == vtol_mode::TRANSITION_TO_FW && PX4_ISFINITE(_thrust_setpoint_0->xyz[2])) {
 			_front_transition_end_thrust = _thrust_setpoint_0->xyz[2];
@@ -457,31 +474,15 @@ void Standard::fill_actuator_outputs()
 		}
 
 		// [P5 HANDOFF-VALLEY FIX] In FW the MC thrust setpoint is ~0 (the wing + pusher fly), so the stock 2 s
-		// thrust ramp above has nothing to scale -- the lift rotors cut to zero the instant the transition
-		// completes (~CAS 54) while the wing only makes full lift at VT_LIFT_HND_V (~72), leaving a ~10 m
-		// altitude valley at the MC->FW handoff. Command an ABSOLUTE lift-rotor up-thrust on the AIRSPEED lift
-		// schedule floor = 1-(CAS/VT_LIFT_HND_V)^2, peaked at the hover collective VT_LIFT_HND_THR, so the
-		// rotors carry exactly the wing's lift deficit and release smoothly as CAS -> VT_LIFT_HND_V. SELF-
-		// CONTAINED and strictly gated (CAS < VT_LIFT_HND_V AND within 25 s of FW entry) so it cannot leak into
-		// cruise / P8 brake / P9 descent. Takes the LARGER up-thrust (min, body-z up = negative) so it never
-		// reduces an existing VT_FW_MC_THR climb-assist. 0 = disabled (stock instant cut).
+		// thrust ramp above has nothing to scale -- the lift rotors would cut to zero the instant the transition
+		// completes (~CAS 50) while the wing only makes full lift at VT_LIFT_HND_V (~72). The rotors keep an absolute
+		// up-thrust that hands the load over to the wing without a step (liftHandoverCollective). Takes the LARGER
+		// up-thrust (min, body-z up = negative) so it never reduces an existing VT_FW_MC_THR climb-assist.
 		{
-			const float vL_fw = _param_vt_lift_hnd_v.get();
-			const float cas_fw = _attc->get_calibrated_airspeed();
-			const float t_in_fw = (float)(hrt_absolute_time() - _fw_mode_entry_time) / 1e6f;
+			const float collective = liftHandoverCollective(updateScheduleAirspeed());
 
-			if (_param_vt_lift_hnd_thr.get() > 0.01f && vL_fw > FLT_EPSILON && PX4_ISFINITE(cas_fw)
-			    && cas_fw > 0.0f && cas_fw < vL_fw && t_in_fw < 25.0f) {
-				const float floor = math::constrain(1.0f - (cas_fw / vL_fw) * (cas_fw / vL_fw), 0.0f, 1.0f);
-				_thrust_setpoint_0->xyz[2] = math::min(_thrust_setpoint_0->xyz[2], -floor * _param_vt_lift_hnd_thr.get());
-			}
-
-			// VT_LIFT_HND_RT: release the lift rotors from the collective they had at the end of the (climbing) front
-			// transition down to the schedule above over this time, instead of stepping (HQ01: 0.52 -> 0.21 in one
-			// step, the vehicle went from 3.7 m/s climb to 3.6 m/s sink and rolled 9.5 deg/s at the handoff).
-			if (_param_vt_lift_hnd_rt.get() > FLT_EPSILON && t_in_fw < _param_vt_lift_hnd_rt.get()) {
-				const float fade = 1.f - t_in_fw / _param_vt_lift_hnd_rt.get();
-				_thrust_setpoint_0->xyz[2] = math::min(_thrust_setpoint_0->xyz[2], _front_transition_end_thrust * fade);
+			if (collective > 0.f) {
+				_thrust_setpoint_0->xyz[2] = math::min(_thrust_setpoint_0->xyz[2], -collective);
 			}
 		}
 
@@ -505,4 +506,87 @@ void Standard::blendThrottleAfterFrontTransition(float scale)
 {
 	const float tecs_throttle = _v_att_sp->thrust_body[0];
 	_v_att_sp->thrust_body[0] = scale * tecs_throttle + (1.0f - scale) * _pusher_throttle;
+}
+
+float Standard::updateScheduleAirspeed()
+{
+	const float cas = _attc->get_calibrated_airspeed();
+	const hrt_abstime now = hrt_absolute_time();
+
+	if (!PX4_ISFINITE(cas)) {
+		_cas_schedule = NAN;
+		_cas_schedule_time = now;
+		return cas;
+	}
+
+	const float tau = _param_vt_sig_tau.get();
+
+	if (!PX4_ISFINITE(_cas_schedule) || _cas_schedule_time == 0 || now > _cas_schedule_time + 500_ms || tau < FLT_EPSILON) {
+		_cas_schedule = cas;
+
+	} else if (now > _cas_schedule_time) {
+		const float dt = math::min((now - _cas_schedule_time) * 1e-6f, 0.1f);
+		_cas_schedule += (cas - _cas_schedule) * dt / (tau + dt);
+	}
+
+	_cas_schedule_time = now;
+	return _cas_schedule;
+}
+
+float Standard::liftHandoverCollective(const float cas)
+{
+	const hrt_abstime now = hrt_absolute_time();
+	const float hover = _param_vt_lift_hnd_thr.get();
+	const float v_wing = _param_vt_lift_hnd_v.get();
+
+	if (hover < 0.01f || v_wing < FLT_EPSILON) {
+		_handover_collective = 0.f;
+		return 0.f;
+	}
+
+	const float t_in_fw = (now - _fw_mode_entry_time) * 1e-6f;
+
+	if (_handover_time == 0) {
+		// FW entry: start from the collective the rotors had at the end of the front transition (bumpless)
+		_handover_collective = math::constrain(-_front_transition_end_thrust, 0.f, 1.f);
+		_handover_time = now;
+	}
+
+	const float dt = math::constrain((now - _handover_time) * 1e-6f, 0.f, 0.05f);
+	_handover_time = now;
+
+	if (_handover_collective <= 0.f && t_in_fw > 1.f) {
+		return 0.f; // handover finished: rotors stay off until the next transition
+	}
+
+	// Target: the wing's lift deficit (1 - (V / VT_LIFT_HND_V)^2 of hover) for up to 25 s, then nothing.
+	float target = 0.f;
+
+	if (PX4_ISFINITE(cas) && cas > 0.f && cas < v_wing && t_in_fw < 25.f) {
+		const float r = cas / v_wing;
+		target = math::constrain(1.f - r * r, 0.f, 1.f) * hover;
+	}
+
+	// Climb-rate assist: while the rotors still carry load, they also close the climb-rate error the wing has not yet
+	// taken over (the TECS pitch-up is rate limited), weighted by the remaining rotor share.
+	const float kv = _param_vt_lift_hnd_kv.get();
+
+	if (kv > FLT_EPSILON && hrt_elapsed_time(&_tecs_status->timestamp) < 500_ms
+	    && PX4_ISFINITE(_tecs_status->height_rate_setpoint) && PX4_ISFINITE(_tecs_status->height_rate)) {
+		const float share = math::constrain(_handover_collective / hover, 0.f, 1.f);
+		target += kv * share * (_tecs_status->height_rate_setpoint - _tecs_status->height_rate);
+	}
+
+	target = math::constrain(target, 0.f, math::max(-_front_transition_end_thrust, hover));
+
+	const float slew = _param_vt_lift_hnd_slw.get();
+
+	if (slew > FLT_EPSILON) {
+		_handover_collective = math::constrain(target, _handover_collective - slew * dt, _handover_collective + slew * dt);
+
+	} else {
+		_handover_collective = target;
+	}
+
+	return _handover_collective;
 }

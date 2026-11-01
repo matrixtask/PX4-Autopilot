@@ -248,6 +248,18 @@ parameters:
       max: 0.5
       decimal: 2
       increment: 0.01
+    FW_DTRIM_R_THR:
+      description:
+        short: Roll trim increment at full forward thrust
+        long: |-
+          Added to TRIM_ROLL in proportion to the forward thrust (pusher / tractor thrust setpoint, 0..1),
+          for the propeller torque and slipstream roll moment. Scaled with airspeed like the other trims.
+      type: float
+      default: 0.0
+      min: -0.5
+      max: 0.5
+      decimal: 3
+      increment: 0.005
     FW_DTRIM_P_VMAX:
       description:
         short: Pitch trim increment at maximum airspeed

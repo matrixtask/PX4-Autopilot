@@ -408,6 +408,13 @@ private:
 	float descentSpoilers(float dt);
 	float _descent_spoiler{0.f};
 
+	/**
+	 * Glide path (FW_WP_GLIDE): altitude setpoint along the leg from the previous to the current waypoint, leading the
+	 * along-track position by the lag of the TECS altitude reference (FW_T_REF_ACC / FW_T_REF_JERK).
+	 */
+	float glidePathAltitude(const position_setpoint_s &pos_sp_prev, const position_setpoint_s &pos_sp_curr,
+				const matrix::Vector2f &ground_speed) const;
+
 	hrt_abstime _time_in_fixed_bank_loiter{0}; // [us]
 	hrt_abstime _loiter_entry_time{0}; // [us] clothoid loiter-entry snap ramp start
 	bool _was_in_loiter{false};
@@ -877,6 +884,9 @@ private:
 		(ParamFloat<px4::params::FW_FLAPS_TO_SCL>) _param_fw_flaps_to_scl,
 		(ParamFloat<px4::params::FW_SPOILERS_LND>) _param_fw_spoilers_lnd,
 		(ParamFloat<px4::params::FW_SPOILERS_DESC>) _param_fw_spoilers_desc,
+		(ParamBool<px4::params::FW_WP_GLIDE>) _param_fw_wp_glide,
+		(ParamFloat<px4::params::FW_T_REF_ACC>) _param_fw_t_ref_acc,
+		(ParamFloat<px4::params::FW_T_REF_JERK>) _param_fw_t_ref_jerk,
 		(ParamInt<px4::params::FW_POS_STK_CONF>) _param_fw_pos_stk_conf,
 		(ParamInt<px4::params::FW_GPSF_LT>) _param_nav_gpsf_lt,
 		(ParamFloat<px4::params::FW_GPSF_R>) _param_nav_gpsf_r,

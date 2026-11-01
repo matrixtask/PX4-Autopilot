@@ -101,6 +101,7 @@ private:
 	vtol_brake::Params _brake_params{};
 	float _brake_pitch_rate{0.f};        ///< [rad/s] pitch-setpoint rate limit
 	int32_t _param_mpc_acc_decouple{1};
+	float _param_mpc_jerk_auto{0.f};      ///< MC trajectory jerk: braking taper at the end of the back transition
 	float _brake_pitch{NAN};             ///< [rad] rate-limited pitch command
 	float _brake_trim{0.f};              ///< [m/s^2] decel trim (VT_B_DEC_I) on top of the feed-forward
 	float _brake_lift{0.f};              ///< [N] predicted wing lift

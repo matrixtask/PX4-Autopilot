@@ -118,6 +118,33 @@ parameters:
       max: 10.0
       decimal: 1
       increment: 0.5
+    FW_T_REF_ACC:
+      description:
+        short: Altitude reference acceleration limit
+        long: |-
+          Maximum vertical acceleration of the TECS altitude / height-rate reference. A new climb or sink
+          rate (waypoint switch, glide-path change, level-off) is reached with this acceleration instead of
+          FW_T_VERT_ACC, which keeps limiting the pitch rate only. 0 = use FW_T_VERT_ACC.
+      type: float
+      default: 0.0
+      unit: m/s^2
+      min: 0.0
+      max: 10.0
+      decimal: 2
+      increment: 0.1
+    FW_T_REF_JERK:
+      description:
+        short: Altitude reference jerk limit
+        long: |-
+          Maximum vertical jerk of the TECS altitude / height-rate reference (S-curve between climb, level
+          and descent). 0 = unlimited (PX4 default).
+      type: float
+      default: 0.0
+      unit: m/s^3
+      min: 0.0
+      max: 20.0
+      decimal: 2
+      increment: 0.1
     FW_T_RLL2THR:
       description:
         short: Roll -> Throttle feedforward

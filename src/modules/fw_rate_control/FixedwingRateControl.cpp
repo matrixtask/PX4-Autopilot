@@ -368,6 +368,19 @@ void FixedwingRateControl::Run()
 						       _param_fw_dtrim_y_vmax.get());
 			}
 
+			// Propeller torque / slipstream trim: the forward-thrust motor rolls the airframe in proportion to its thrust.
+			// A feed-forward with the actual forward thrust (the pusher command in every VTOL phase) keeps the roll
+			// integrator free of it, so a throttle change (front-transition end, descent at idle) is not a roll upset
+			// that the integrator has to wind out. Same 1/q scaling as the trims above.
+			if (fabsf(_param_fw_dtrim_r_thr.get()) > FLT_EPSILON) {
+				vehicle_thrust_setpoint_s thrust_actual{};
+
+				if (_vehicle_thrust_setpoint_actual_sub.copy(&thrust_actual) && PX4_ISFINITE(thrust_actual.xyz[0])) {
+					trim(0) += _param_fw_dtrim_r_thr.get() * math::constrain(thrust_actual.xyz[0], 0.f, 1.f)
+						   * _airspeed_scaling * _airspeed_scaling;
+				}
+			}
+
 			if (_vcontrol_mode.flag_control_rates_enabled) {
 				_rates_sp_sub.update(&_rates_sp);
 
@@ -450,7 +463,7 @@ void FixedwingRateControl::Run()
 			const float yaw_rate_lp = _yaw_rate_lpf_for_washout.update(rates(2));
 			const float yaw_rate_washout = rates(2) - yaw_rate_lp; // high-pass
 			_vehicle_torque_setpoint.xyz[2] = math::constrain(
-				_vehicle_torque_setpoint.xyz[2] - _param_fw_yd_gain.get() * yaw_rate_washout, -1.f, 1.f);
+					_vehicle_torque_setpoint.xyz[2] - _param_fw_yd_gain.get() * yaw_rate_washout, -1.f, 1.f);
 
 		} else {
 			_yaw_rate_lpf_for_washout.reset(rates(2));

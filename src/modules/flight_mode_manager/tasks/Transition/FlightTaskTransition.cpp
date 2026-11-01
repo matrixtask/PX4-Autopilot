@@ -53,6 +53,7 @@ FlightTaskTransition::FlightTaskTransition()
 	param_get(param_find("VT_B_TRANS_HMIN"), &_param_vt_b_trans_hmin);
 	param_get(param_find("VT_F_YAW_HOLD"), &_param_vt_f_yaw_hold);
 	param_get(param_find("MPC_ACC_DECOUPLE"), &_param_mpc_acc_decouple);
+	param_get(param_find("MPC_JERK_AUTO"), &_param_mpc_jerk_auto);
 	loadBrakeParams();
 }
 
@@ -372,8 +373,16 @@ float FlightTaskTransition::computeBackTransitionBrake()
 	const Vector2f velocity_xy_direction = velocity_xy.unit_or_zero();
 
 	// Demand: stop at the end point, capped and jerk-limited (comfort), plus an integral trim for model error.
-	const float decel_setpoint = math::min(computeBackTransitionDecelSetpoint(), kBrakeDecelCap * _param_vt_b_dec_mss,
-					       kBrakeJerk * _brake_time);
+	float decel_setpoint = math::min(computeBackTransitionDecelSetpoint(), kBrakeDecelCap * _param_vt_b_dec_mss,
+					 kBrakeJerk * _brake_time);
+
+	// Stopping taper: decel <= sqrt(2 j v) brings the braking to zero together with the speed at the MC jerk
+	// (MPC_JERK_AUTO), so the multicopter trajectory that takes over at VT_BFF_VEXIT starts from an acceleration it can
+	// also bring to zero before the vehicle stops (2.6 m/s^2 at 4 m/s overshot backwards by 3 m/s, HQ01 v7).
+	if (_param_mpc_jerk_auto > FLT_EPSILON) {
+		decel_setpoint = math::min(decel_setpoint, sqrtf(2.f * _param_mpc_jerk_auto * velocity_xy.norm()));
+	}
+
 	const Vector2f acceleration_xy{_sub_vehicle_local_position.get().ax, _sub_vehicle_local_position.get().ay};
 	const float decel = _brake_decel_filter.update(-acceleration_xy.dot(velocity_xy_direction), _deltatime);
 

@@ -220,6 +220,15 @@ parameters:
       max: 1.0
       decimal: 2
       increment: 0.01
+    FW_WP_GLIDE:
+      description:
+        short: Glide path between mission waypoints
+        long: |-
+          Fly each mission leg as a straight glide path: the altitude setpoint follows the along-track position
+          from the previous to the current waypoint, so a descent or climb is spread over the whole leg. 0 = PX4
+          default (reach the waypoint altitude at the acceptance radius, step at short legs).
+      type: boolean
+      default: 0
     FW_SPOILERS_LND:
       description:
         short: Spoiler landing setting
