@@ -417,6 +417,15 @@ parameters:
           The VT_BFF_* model values come from the airframe aerodynamics (wing, spoiler, drag).
       type: boolean
       default: 0
+    VT_BFF_LOBS:
+      description:
+        short: Lift observer for the feed-forward brake
+        long: |-
+          Corrects the wing-lift model online from the measured vertical acceleration and the rotor thrust
+          (src/lib/vtol_brake observeLiftScale; 0.6 .. 2.5, 1 s filter, only while the wing carries > 10 % of
+          the weight). Model error correction, the brake stays feed-forward.
+      type: boolean
+      default: 0
     VT_BFF_MASS:
       description:
         short: Brake model mass

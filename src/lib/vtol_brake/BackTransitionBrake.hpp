@@ -55,6 +55,7 @@
 
 #include <cmath>
 #include <lib/mathlib/mathlib.h>
+#include <px4_platform_common/defines.h>
 
 namespace vtol_brake
 {
@@ -79,6 +80,7 @@ struct Params {
 	float v_alpha_lo{10.f};             ///< alpha cap fades out between v_alpha_hi and v_alpha_lo: below ~15 m/s
 	float v_alpha_hi{25.f};             ///< the wing carries < 15 % of the weight, a high alpha is harmless
 	float gamma_margin{0.035f};         ///< alpha kept in reserve when limiting the sink [rad]
+	float lift_scale{1.f};              ///< online correction of the wing lift (observeLiftScale)
 };
 
 struct Output {
@@ -108,7 +110,7 @@ inline Forces forces(const Params &p, float q, float gamma, float pitch, float s
 {
 	const float alpha = pitch - gamma;
 	const float a_lin = math::constrain(alpha, -p.alpha_stall, p.alpha_stall);
-	const float lift_clean = q * (p.scl0 + p.scla * a_lin + p.scla_stall * (alpha - a_lin));
+	const float lift_clean = q * p.lift_scale * (p.scl0 + p.scla * a_lin + p.scla_stall * (alpha - a_lin));
 	const float lift = lift_clean - q * p.spcl * spoiler;
 	const float drag = q * (p.cda + p.spcd * sinf(spoiler * p.sp_angle) / sinf(p.sp_angle))
 			   + lift_clean * lift_clean / (q * p.kind);
@@ -158,7 +160,7 @@ inline float idealPitch(const Params &p, float speed, float vz_ned, float decel)
 	const float alpha_cap = alphaCap(p, v);
 
 	auto pitch_for = [&](float spoiler) {
-		const float alpha = (lift_target / q - p.scl0 + p.spcl * spoiler) / p.scla;
+		const float alpha = (lift_target / (q * p.lift_scale) - p.scl0 + p.spcl * spoiler / p.lift_scale) / p.scla;
 		return math::constrain(gamma + math::min(alpha, alpha_cap), p.pitch_min, p.pitch_max);
 	};
 
@@ -207,6 +209,40 @@ inline float sinkMax(const Params &p, float speed, float decel)
 	const float pitch_level = idealPitch(p, v, 0.f, decel);
 	const float room = alphaCap(p, v) - math::max(pitch_level, 0.f) - p.gamma_margin;
 	return v * tanf(math::constrain(room, 0.f, math::radians(80.f)));
+}
+
+/**
+ * Lift observer: corrects the wing-lift model online (model error, not a climb detector). Vertical balance
+ *   m (g + a_up) = Fz_rotor + L cos(g) - D sin(g),   L = k L_clean(model) - q spcl s
+ * solved for k, low-passed (tau) and limited to 0.6 .. 2.5. Only while the wing carries a meaningful share
+ * (q > 600 Pa and model lift > 0.1 W); otherwise k is kept. Mk-7 EM3 SITL HQ01 run 3: the wing gave ~1.7x the
+ * model lift with the spoiler retracted and the aircraft climbed 22 m with the rotors at idle.
+ */
+inline float observeLiftScale(const Params &p, float speed, float vz_ned, float pitch, float spoiler, float accel_up,
+			      float rotor_fz, float k_prev, float dt, float tau = 1.f)
+{
+	const float v = math::max(speed, 1.f);
+	const float q = dynamicPressure(p, v);
+
+	if (q < 600.f || !PX4_ISFINITE(accel_up) || !PX4_ISFINITE(rotor_fz) || !PX4_ISFINITE(pitch)) {
+		return k_prev;
+	}
+
+	const float gamma = flightPathAngle(v, vz_ned);
+	const float alpha = pitch - gamma;
+	const float a_lin = math::constrain(alpha, -p.alpha_stall, p.alpha_stall);
+	const float lift_clean = q * (p.scl0 + p.scla * a_lin + p.scla_stall * (alpha - a_lin));
+
+	if (lift_clean < 0.1f * p.mass * kGravity) {
+		return k_prev;
+	}
+
+	Params unit = p;
+	unit.lift_scale = 1.f;
+	const Forces f = forces(unit, q, gamma, pitch, spoiler);
+	const float lift = (p.mass * (kGravity + accel_up) - rotor_fz + f.drag * sinf(gamma)) / math::max(cosf(gamma), 0.5f);
+	const float k = math::constrain((lift + q * p.spcl * spoiler) / lift_clean, 0.6f, 2.5f);
+	return k_prev + (k - k_prev) * math::min(dt / tau, 1.f);
 }
 
 /** Spoiler, lift and rotor force for the pitch actually commanded (after rate limiting). */

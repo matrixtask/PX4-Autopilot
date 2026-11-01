@@ -47,6 +47,8 @@
 #include <uORB/topics/position_setpoint_triplet.h>
 #include <uORB/topics/airspeed_validated.h>
 #include <uORB/topics/vtol_brake_setpoint.h>
+#include <uORB/topics/vehicle_attitude.h>
+#include <uORB/topics/vehicle_thrust_setpoint.h>
 #include <uORB/Publication.hpp>
 #include <drivers/drv_hrt.h>
 #include <lib/vtol_brake/BackTransitionBrake.hpp>
@@ -73,6 +75,8 @@ private:
 	uORB::SubscriptionData<position_setpoint_triplet_s> _sub_position_sp_triplet{ORB_ID(position_setpoint_triplet)};
 	uORB::SubscriptionData<airspeed_validated_s> _sub_airspeed{ORB_ID(airspeed_validated)};
 	uORB::Publication<vtol_brake_setpoint_s> _brake_setpoint_pub{ORB_ID(vtol_brake_setpoint)};
+	uORB::SubscriptionData<vehicle_attitude_s> _sub_attitude{ORB_ID(vehicle_attitude)};
+	uORB::SubscriptionData<vehicle_thrust_setpoint_s> _sub_thrust_mc{ORB_ID(vehicle_thrust_setpoint), 0};
 
 	float _param_fw_psp_off{0.f};
 	float _param_vt_b_dec_i{0.f};
@@ -99,6 +103,9 @@ private:
 	float _brake_lift{0.f};              ///< [N] predicted wing lift
 	float _brake_sink_max{INFINITY};     ///< [m/s] sink that still leaves the angle of attack to brake
 	float _brake_time{0.f};              ///< [s] since the back transition started
+	bool _brake_lift_observer{false};    ///< VT_BFF_LOBS
+	float _hover_thrust{0.5f};           ///< MPC_THR_HOVER: normalised thrust that carries the weight
+	float _brake_spoiler{0.f};           ///< last spoiler command (for the lift observer)
 	AlphaFilter<float> _brake_decel_filter{kBrakeDecelFilterTimeConstant};
 
 	static constexpr float kAltitudeCaptureTimeConstant = 5.0f; ///< [s] climb/descent rate fades out near the target

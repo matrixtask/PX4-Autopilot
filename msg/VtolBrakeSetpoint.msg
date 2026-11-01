@@ -11,3 +11,4 @@ float32 spoiler		# [0, 1] spoiler command
 float32 lift		# [N] predicted wing lift (fed forward to the rotors)
 float32 sink_max	# [m/s] sink rate that still leaves the angle of attack to brake
 float32 airspeed	# [m/s] speed the law used (calibrated airspeed, or ground speed without airspeed)
+float32 lift_scale	# [-] wing-lift model correction from the lift observer (1 = model)

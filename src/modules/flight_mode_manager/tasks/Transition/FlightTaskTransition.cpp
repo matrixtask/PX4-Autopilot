@@ -72,6 +72,10 @@ void FlightTaskTransition::loadBrakeParams()
 	param_get(param_find("VT_BFF_KIND"), &_brake_params.kind);
 	param_get(param_find("VT_BFF_RMIN"), &_brake_params.r_min);
 	param_get(param_find("VT_LIFT_HND_V"), &_brake_params.v_lift);
+	param_get(param_find("MPC_THR_HOVER"), &_hover_thrust);
+	int32_t observer = 0;
+	param_get(param_find("VT_BFF_LOBS"), &observer);
+	_brake_lift_observer = (observer == 1) && _hover_thrust > 0.05f;
 
 	if (param_get(param_find("VT_BFF_AMAX"), &deg) == PX4_OK) { _brake_params.alpha_max = math::radians(deg); }
 
@@ -115,6 +119,8 @@ bool FlightTaskTransition::activate(const trajectory_setpoint_s &last_setpoint)
 		_brake_sink_max = INFINITY;
 		_brake_time = 0.f;
 		_brake_decel_filter.reset(0.f);
+		_brake_params.lift_scale = 1.f;
+		_brake_spoiler = 0.f;
 	}
 
 	return ret;
@@ -338,6 +344,19 @@ float FlightTaskTransition::computeBackTransitionBrake()
 		speed = airspeed.calibrated_airspeed_m_s;
 	}
 
+	if (_brake_lift_observer) {
+		// rotor vertical force from the MC thrust setpoint (normalised, MPC_THR_HOVER carries the weight)
+		_sub_attitude.update();
+		_sub_thrust_mc.update();
+		const matrix::Quatf q_att{_sub_attitude.get().q};
+		const float pitch_actual = matrix::Eulerf(q_att).theta();
+		const float weight = _brake_params.mass * CONSTANTS_ONE_G;
+		const float rotor_fz = -_sub_thrust_mc.get().xyz[2] / _hover_thrust * weight * cosf(pitch_actual);
+		const float accel_up = -_sub_vehicle_local_position.get().az;
+		_brake_params.lift_scale = vtol_brake::observeLiftScale(_brake_params, speed, _velocity(2), pitch_actual,
+					   _brake_spoiler, accel_up, rotor_fz, _brake_params.lift_scale, _deltatime);
+	}
+
 	const float pitch_ideal = vtol_brake::idealPitch(_brake_params, speed, _velocity(2), demand);
 
 	if (!PX4_ISFINITE(_brake_pitch)) {
@@ -349,6 +368,7 @@ float FlightTaskTransition::computeBackTransitionBrake()
 
 	const vtol_brake::Output out = vtol_brake::brake(_brake_params, speed, _velocity(2), demand, _brake_pitch);
 	_brake_lift = out.lift;
+	_brake_spoiler = out.spoiler;
 	_brake_sink_max = vtol_brake::sinkMax(_brake_params, speed, demand);
 
 	vtol_brake_setpoint_s setpoint{};
@@ -360,6 +380,7 @@ float FlightTaskTransition::computeBackTransitionBrake()
 	setpoint.lift = out.lift;
 	setpoint.sink_max = _brake_sink_max;
 	setpoint.airspeed = speed;
+	setpoint.lift_scale = _brake_params.lift_scale;
 	setpoint.timestamp = hrt_absolute_time();
 	_brake_setpoint_pub.publish(setpoint);
 

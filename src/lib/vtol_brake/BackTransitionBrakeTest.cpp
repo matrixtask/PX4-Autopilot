@@ -84,3 +84,24 @@ TEST(BackTransitionBrake, MeetsDemandWhenFeasible)
 		}
 	}
 }
+
+TEST(BackTransitionBrake, LiftObserverRecoversModelError)
+{
+	// a wing that lifts 1.5x the model: build the measured acceleration from the true forces and check that the
+	// observer converges to 1.5 (Mk-7 SITL HQ01 run 3 had ~1.7x with the spoiler retracted)
+	Params truth{};
+	truth.lift_scale = 1.5f;
+	const Params model{};
+	const float speed = 55.f, vz = 0.f, pitch = 0.08f, spoiler = 0.2f;
+	const float q = dynamicPressure(truth, speed);
+	const Forces f = forces(truth, q, 0.f, pitch, spoiler);
+	const float rotor_fz = 0.2f * truth.mass * kGravity;
+	const float accel_up = (rotor_fz + f.lift - truth.mass * kGravity) / truth.mass;
+	float k = 1.f;
+
+	for (int i = 0; i < 200; i++) {
+		k = observeLiftScale(model, speed, vz, pitch, spoiler, accel_up, rotor_fz, k, 0.05f);
+	}
+
+	EXPECT_NEAR(k, 1.5f, 0.03f);
+}
