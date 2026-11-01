@@ -9,6 +9,8 @@
  * air-relative velocity (symmetric deflection = pure drag, no rolling moment). q = 0.5 rho |v|^2.
  * Matches the [MOD-4] term documented in the Mk-7 model (teTra_mk-7_EM2/EM3); the original binary was not in any
  * repository. `baseline_rad` from that description is accepted and ignored (its meaning is not documented).
+ * Optional `base_cda` [m^2]: constant parasite drag of the airframe parts the lift models do not cover (booms,
+ * stopped lift rotors, landing gear), D = q * base_cda, same point and direction.
  */
 #pragma once
 
@@ -38,6 +40,7 @@ private:
 	double _rho{1.2041};
 	double _cd_plate{1.0};
 	double _area{0.9};
+	double _base_cda{0.0};  ///< constant airframe parasite drag area [m^2] (booms, stopped lift rotors, gear)
 	bool _ready{false};
 };
 } // namespace tetra

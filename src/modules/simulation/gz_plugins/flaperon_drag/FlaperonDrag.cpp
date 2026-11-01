@@ -23,6 +23,7 @@ void FlaperonDrag::Configure(const gz::sim::Entity &entity, const std::shared_pt
 	_rho = sdf->Get<double>("air_density", _rho).first;
 	_cd_plate = sdf->Get<double>("cd_plate", _cd_plate).first;
 	_area = sdf->Get<double>("flap_area", _area).first;
+	_base_cda = sdf->Get<double>("base_cda", _base_cda).first;
 
 	if (sdf->HasElement("joint_names")) {
 		std::istringstream names(sdf->Get<std::string>("joint_names"));
@@ -50,7 +51,8 @@ void FlaperonDrag::Configure(const gz::sim::Entity &entity, const std::shared_pt
 	}
 
 	_ready = _link.Valid(ecm) && !_joints.empty();
-	gzmsg << "FlaperonDrag: " << _joints.size() << " surfaces, cd " << _cd_plate << ", area " << _area << std::endl;
+	gzmsg << "FlaperonDrag: " << _joints.size() << " surfaces, cd " << _cd_plate << ", area " << _area
+	      << ", base CdA " << _base_cda << std::endl;
 }
 
 void FlaperonDrag::PreUpdate(const gz::sim::UpdateInfo &info, gz::sim::EntityComponentManager &ecm)
@@ -89,7 +91,7 @@ void FlaperonDrag::PreUpdate(const gz::sim::UpdateInfo &info, gz::sim::EntityCom
 		}
 	}
 
-	const double drag = 0.5 * _rho * speed * speed * _cd_plate * _area * sum_sin;
+	const double drag = 0.5 * _rho * speed * speed * (_cd_plate * _area * sum_sin + _base_cda);
 	_link.AddWorldForce(ecm, -drag * v_air / speed);
 }
 
