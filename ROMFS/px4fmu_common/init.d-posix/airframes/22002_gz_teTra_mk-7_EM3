@@ -234,7 +234,7 @@ param set-default MPC_THR_XY_MARG 0.08
 param set-default MPC_TKO_SPEED 1.0
 param set-default MPC_TKO_RAMP_T 4.0
 param set-default MPC_LAND_SPEED 0.6
-param set-default MPC_Z_VEL_MAX_DN 1.5
+param set-default MPC_Z_VEL_MAX_DN 3.0  # vertical descent 0.23 vh (see VT_B_TRANS_VZLO); was 1.5 (handoff: 4 m/s diverged)
 param set-default NAV_ACC_RAD 2
 param set-default NAV_DLL_ACT 2
 
@@ -318,8 +318,8 @@ param set-default WV_EN 0
 param set-default MPC_TILTMAX_AIR 16
 param set-default MPC_TILTMAX_LND 5
 param set-default MPC_XY_P 0.25
-param set-default MPC_XY_CRUISE 10.0
-param set-default MPC_XY_VEL_MAX 12.0
+param set-default MPC_XY_CRUISE 20.0  # MC leg after a back transition that stops short (HQ01 run 5: 2.7 km at 10 m/s = 4.5 min)
+param set-default MPC_XY_VEL_MAX 22.0
 param set-default MPC_XY_VEL_P_ACC 0.75
 param set-default MPC_XY_VEL_I_ACC 0.055
 param set-default MPC_XY_VEL_D_ACC 0.42
@@ -361,7 +361,7 @@ param set-default FW_AIRSPD_STALL 37
 param set-default FW_AIRSPD_MIN 42
 param set-default FW_AIRSPD_TRIM 60
 param set-default FW_AIRSPD_MAX 80
-param set-default FW_R_LIM 15
+param set-default FW_R_LIM 25  # roll demand must not saturate (limit cycle at 15 deg); acceptance <= 30 deg
 param set-default FW_YD_GAIN 5.0
 param set-default MIS_DIST_1WP 0
 # Wing->rotor lift handoff (firmware feature from mk7 study, previously enabled only at runtime by the
@@ -383,7 +383,7 @@ param set-default RTL_TYPE 3
 param set-default VT_F_TRANS_VZ 7.0  # climb during the front transition (new, FlightTaskTransition); evaluation 7 m/s. 5 m/s left 135 m AGL at 1.3 km (test 1)
 param set-default MPC_Z_VEL_MAX_UP 7.0  # caps the transition climb; MC take-off speed stays MPC_TKO_SPEED
 param set-default VT_B_TRANS_VZ 7.0  # descend during the back transition above 50 kt (new; evaluation 7 m/s)
-param set-default VT_B_TRANS_VZLO 1.4  # below 30 kt (vortex ring state), evaluation value
+param set-default VT_B_TRANS_VZLO 3.0  # below 30 kt: 0.23 vh (vh 13 m/s). V-22 limit 800 fpm below 40 KTAS = 0.20 vh, VRS onset ~2000 fpm = 0.5 vh
 param set-default VT_B_TRANS_HMIN 30  # level off 30 m above the pad, then vertical landing
 param set-default VT_B_VZ_PITCH 8.0  # deg per m/s of climb: pitch down in the back transition (new; +56 m without, +32 m with 3)
 param set-default VT_B_DEC_MSS 1.0  # 0.1 g braking (evaluation brake_g)
@@ -397,7 +397,7 @@ param set-default FW_P_TC 0.5
 param set-default FW_R_RMAX 15  # deg/s roll-rate limit (comfort; 8 was too slow for NPFG)
 param set-default FW_P_RMAX_POS 10  # deg/s
 param set-default FW_P_RMAX_NEG 10  # deg/s
-param set-default NPFG_PERIOD 20  # gentler path convergence (was 12)
+param set-default NPFG_PERIOD 30  # with FW_R_LIM 15 / period 20 the turn at Sasu became a +-15 deg bang-bang weave (HQ01 run 3)
 param set-default MPC_YAWRAUTO_MAX 6  # deg/s: at 10 the 11800 kg m^2 yaw axis overshot the alignment turn by 30 deg (test 8)
 param set-default MPC_JERK_AUTO 0.5
 param set-default MPC_ACC_UP_MAX 2.0
@@ -407,3 +407,14 @@ param set-default MIS_YAW_ERR 5  # align the nose with the first leg before the 
 param set-default MIS_YAW_TMT 30  # up to ~100 deg at MPC_YAWRAUTO_MAX 10 deg/s; 10 s timed out and triggered RTL (test 6)
 param set-default FW_P_LIM_MAX 15  # comfort: test 5 zoom-climbed at 22 deg after FW entry (default 30)
 param set-default MPC_YAWRAUTO_ACC 2  # deg/s^2
+
+# Spoilers in the back transition (central flaps 5/6 deflected UP = lift dump + drag; drag from the FlaperonDrag
+# gz plugin). Clean airframe: the wing carried the full weight down to ~30 m/s and the aircraft could not brake
+# and descend at once (HQ01 runs 2-5). Flap outputs were disabled in SITL (v7 experiment) -> enabled here.
+param set-default SIM_GZ_SV_FUNC6 206
+param set-default SIM_GZ_SV_FUNC7 207
+param set-default CA_SV_CS5_SPOIL -1.0
+param set-default CA_SV_CS6_SPOIL -1.0
+param set-default CA_SV5_SLEW 3.0  # s for the full range: the lift dump comes in over ~2 s
+param set-default CA_SV6_SLEW 3.0
+param set-default VT_B_SPOILER 0.6  # -27 deg: ~0.85 m^2 drag area, CL -0.66 on the 6 m^2 flap span
