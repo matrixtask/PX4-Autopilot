@@ -371,15 +371,6 @@ void Standard::update_fw_state()
 	const float v_wing = _param_vt_lift_hnd_v.get();
 	const hrt_abstime now = hrt_absolute_time();
 
-	if (_handover_time == 0) {
-		// first FW cycle (the handover state is reset in every other mode)
-// weight share the rotors carry at FW entry, at most 1: a climbing transition ends above hover thrust (HQ01
-		// 0.63 / 0.42) because the rotors lose thrust in forward flight, not because they carry more than the weight
-		_ccv_share_start = (hover > 0.01f) ? math::constrain(-_front_transition_end_thrust / hover, 0.f, 1.f) : 0.f;
-		_ccv_pitch = 0.f;
-		_ccv_washout_time = 0;
-	}
-
 	if (aoa < FLT_EPSILON || hover < 0.01f || v_wing < FLT_EPSILON) {
 		_ccv_pitch = 0.f;
 		return;
@@ -600,6 +591,13 @@ float Standard::liftHandoverCollective(const float cas)
 		// FW entry: start from the collective the rotors had at the end of the front transition (bumpless)
 		_handover_collective = math::constrain(-_front_transition_end_thrust, 0.f, 1.f);
 		_handover_time = now;
+
+		// CCV feed-forward (update_fw_state) starts here too: update_fw_state runs only on a new FW attitude setpoint,
+		// so it may not see the first FW cycle. Weight share the rotors carry at FW entry, at most 1: a climbing
+		// transition ends above hover thrust (HQ01 0.62 / 0.42) because the rotors lose thrust in forward flight.
+		_ccv_share_start = math::constrain(-_front_transition_end_thrust / hover, 0.f, 1.f);
+		_ccv_pitch = 0.f;
+		_ccv_washout_time = 0;
 	}
 
 	const float dt = math::constrain((now - _handover_time) * 1e-6f, 0.f, 0.05f);
