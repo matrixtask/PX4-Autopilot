@@ -63,6 +63,8 @@
 #include <uORB/topics/vehicle_land_detected.h>
 #include <uORB/topics/vehicle_rates_setpoint.h>
 #include <uORB/topics/vehicle_status.h>
+#include <uORB/topics/vehicle_torque_setpoint.h>
+#include <uORB/topics/upset_recovery_status.h>
 
 using matrix::AxisAnglef;
 using matrix::Eulerf;
@@ -131,6 +133,8 @@ private:
 	uORB::Publication<vehicle_attitude_setpoint_s>	_attitude_sp_pub;
 	uORB::Publication<vehicle_rates_setpoint_s>	_rate_sp_pub{ORB_ID(vehicle_rates_setpoint)};
 	uORB::Publication<landing_gear_wheel_s>		_landing_gear_wheel_pub{ORB_ID(landing_gear_wheel)};
+	uORB::Publication<upset_recovery_status_s>	_upset_status_pub{ORB_ID(upset_recovery_status)};
+	uORB::Subscription _torque_sp_sub;	///< surface torque setpoint (virtual FW for a VTOL)
 
 	manual_control_setpoint_s		_manual_control_setpoint{};
 	vehicle_attitude_setpoint_s		_att_sp{};
@@ -183,11 +187,28 @@ private:
 		(ParamFloat<px4::params::FW_UPS_RMAX>) _param_fw_ups_rmax,
 		(ParamFloat<px4::params::FW_UPS_NZ>) _param_fw_ups_nz,
 		(ParamFloat<px4::params::FW_UPS_P_DN>) _param_fw_ups_p_dn,
-		(ParamFloat<px4::params::FW_UPS_THR>) _param_fw_ups_thr
+		(ParamFloat<px4::params::FW_UPS_THR>) _param_fw_ups_thr,
+		(ParamFloat<px4::params::FW_UPS_RT_TRG>) _param_fw_ups_rt_trg,
+		(ParamFloat<px4::params::FW_UPS_RT_T>) _param_fw_ups_rt_t,
+		(ParamFloat<px4::params::FW_UPS_D_TRG>) _param_fw_ups_d_trg,
+		(ParamFloat<px4::params::FW_UPS_D_T>) _param_fw_ups_d_t,
+		(ParamFloat<px4::params::FW_INDI_G_R>) _param_fw_indi_g_r,
+		(ParamFloat<px4::params::FW_INDI_G_P>) _param_fw_indi_g_p,
+		(ParamFloat<px4::params::FW_INDI_TACT>) _param_fw_indi_tact
 	)
 
 	bool _upset{false};
+	uint8_t _upset_trigger{0};
 	hrt_abstime _upset_start{0};
+	hrt_abstime _upset_time{0};
+	float _ups_rate_time{0.f};	///< [s] rate above FW_UPS_RT_TRG
+	float _ups_dist_time{0.f};	///< [s] disturbance above FW_UPS_D_TRG
+	float _ups_calm_time{0.f};	///< [s] all exit conditions met
+	bool _ups_filters_valid{false};
+	float _ups_u_act[2] {};
+	float _ups_u_lp[2] {};
+	float _ups_wd_lp[2] {};
+	float _ups_disturbance[2] {};
 
 	/** Upset recovery state from the current attitude (hysteresis FW_UPS_TILT / FW_UPS_EXIT). */
 	bool updateUpsetRecovery(const matrix::Quatf &q_current);

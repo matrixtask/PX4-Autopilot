@@ -598,10 +598,14 @@ void Standard::redistributeTorque()
 		_rd_last_excess = now;
 	}
 
-	// Keep the rotors ready while the attitude is upset (tilt > 45 deg), whether or not the surfaces are saturated now
+	// Keep the rotors ready while the attitude is upset (fw_att_control upset recovery, or tilt > 45 deg), whether or not
+	// the surfaces are saturated now
 	const matrix::Quatf q_att(_v_att->q);
 	const float cos_tilt = 1.f - 2.f * (q_att(1) * q_att(1) + q_att(2) * q_att(2));
-	const bool upset = q_att.isAllFinite() && cos_tilt < 0.7071f;
+	upset_recovery_status_s upset_status{};
+	const bool upset_flag = _upset_status_sub.copy(&upset_status) && upset_status.active
+				&& hrt_elapsed_time(&upset_status.timestamp) < 500_ms;
+	const bool upset = upset_flag || (q_att.isAllFinite() && cos_tilt < 0.7071f);
 
 	if (upset) {
 		_rd_last_excess = now;

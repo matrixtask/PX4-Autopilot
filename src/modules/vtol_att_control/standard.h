@@ -50,6 +50,7 @@
 #include <uORB/topics/vtol_brake_setpoint.h>
 #include <uORB/SubscriptionMultiArray.hpp>
 #include <uORB/topics/control_allocator_status.h>
+#include <uORB/topics/upset_recovery_status.h>
 
 class Standard : public VtolType
 {
@@ -123,6 +124,7 @@ private:
 	void redistributeTorque();
 	uORB::SubscriptionMultiArray<control_allocator_status_s, 2> _ca_status_subs{ORB_ID::control_allocator_status};
 	control_allocator_status_s _ca_status[2] {};
+	uORB::Subscription _upset_status_sub{ORB_ID(upset_recovery_status)};
 	float _rd_collective{0.f};	///< lift-rotor up-thrust for the redistributed differential [0, 1]
 	hrt_abstime _rd_last_excess{0};
 	hrt_abstime _rd_time{0};

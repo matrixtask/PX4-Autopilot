@@ -47,6 +47,7 @@ FixedwingAttitudeControl::FixedwingAttitudeControl(bool vtol) :
 	ModuleParams(nullptr),
 	ScheduledWorkItem(MODULE_NAME, px4::wq_configurations::nav_and_controllers),
 	_attitude_sp_pub(vtol ? ORB_ID(fw_virtual_attitude_setpoint) : ORB_ID(vehicle_attitude_setpoint)),
+	_torque_sp_sub(vtol ? ORB_ID(vehicle_torque_setpoint_virtual_fw) : ORB_ID(vehicle_torque_setpoint)),
 	_loop_perf(perf_alloc(PC_ELAPSED, MODULE_NAME": cycle"))
 {
 	/* fetch initial parameter values */
@@ -171,8 +172,16 @@ float FixedwingAttitudeControl::get_airspeed_constrained()
 
 bool FixedwingAttitudeControl::updateUpsetRecovery(const Quatf &q_current)
 {
+	const hrt_abstime now = hrt_absolute_time();
+	const float dt = (_upset_time > 0) ? math::constrain((now - _upset_time) * 1e-6f, 0.f, 0.1f) : 0.f;
+	_upset_time = now;
+
+	upset_recovery_status_s status{};
+
 	if (!_param_fw_ups_en.get() || _landed || !_in_fw_or_transition_wo_tailsitter_transition) {
 		_upset = false;
+		_ups_rate_time = _ups_dist_time = _ups_calm_time = 0.f;
+		_ups_filters_valid = false;
 		return false;
 	}
 
@@ -180,15 +189,102 @@ bool FixedwingAttitudeControl::updateUpsetRecovery(const Quatf &q_current)
 	const float tilt = acosf(math::constrain(cos_tilt, -1.f, 1.f));
 	const Eulerf euler(q_current);
 
-	if (!_upset && tilt > radians(_param_fw_ups_tilt.get())) {
-		_upset = true;
-		_upset_start = hrt_absolute_time();
-		PX4_WARN("upset recovery: tilt %.0f deg", (double)math::degrees(tilt));
+	// Rate trigger: roll or pitch rate above FW_UPS_RT_TRG for FW_UPS_RT_T (normal manoeuvres stay within FW_R_RMAX)
+	vehicle_angular_velocity_s angular_velocity{};
+	_vehicle_rates_sub.copy(&angular_velocity);
+	const Vector3f rates(angular_velocity.xyz);
+	const Vector3f angular_accel(angular_velocity.xyz_derivative);
+	const float rate_trigger = radians(_param_fw_ups_rt_trg.get());
+	const bool rate_high = rates.isAllFinite() && rate_trigger > FLT_EPSILON
+			       && (fabsf(rates(0)) > rate_trigger || fabsf(rates(1)) > rate_trigger);
+	_ups_rate_time = rate_high ? _ups_rate_time + dt : 0.f;
 
-	} else if (_upset && tilt < radians(_param_fw_ups_exit.get()) && euler.theta() > -radians(_param_fw_ups_p_dn.get())) {
-		_upset = false;
-		PX4_INFO("upset recovered after %.1f s", (double)(hrt_elapsed_time(&_upset_start) * 1e-6f));
+	// Disturbance trigger: angular acceleration that the control surfaces do not explain, in units of the full
+	// surface authority G q. High-passed (1 s) so that trims, damping and slow manoeuvres drop out; the torque goes
+	// through the actuator lag (FW_INDI_TACT) to line up with the measured angular acceleration.
+	vehicle_torque_setpoint_s torque{};
+	_torque_sp_sub.copy(&torque);
+	const float cas = _airspeed_validated_sub.get().calibrated_airspeed_m_s;
+	const float q_dyn = PX4_ISFINITE(cas) ? 0.5f * 1.225f * cas * cas : 0.f;
+	const float gain[2] {_param_fw_indi_g_r.get(), _param_fw_indi_g_p.get()};
+	float dist_max = 0.f;
+
+	if (angular_accel.isAllFinite() && PX4_ISFINITE(torque.xyz[0]) && PX4_ISFINITE(torque.xyz[1]) && q_dyn > 100.f && dt > 0.f) {
+		const float tact = math::max(_param_fw_indi_tact.get(), 0.f);
+		static constexpr float kHighPassTau = 1.f;
+
+		for (int i = 0; i < 2; i++) {
+			const float u = math::constrain(torque.xyz[i], -1.f, 1.f);
+			const float g = gain[i] * q_dyn;
+
+			if (!_ups_filters_valid) {
+				_ups_u_act[i] = u;
+				_ups_u_lp[i] = u;
+				_ups_wd_lp[i] = angular_accel(i);
+			}
+
+			_ups_u_act[i] += (u - _ups_u_act[i]) * dt / (tact + dt);
+			_ups_u_lp[i] += (_ups_u_act[i] - _ups_u_lp[i]) * dt / (kHighPassTau + dt);
+			_ups_wd_lp[i] += (angular_accel(i) - _ups_wd_lp[i]) * dt / (kHighPassTau + dt);
+
+			if (g > FLT_EPSILON) {
+				_ups_disturbance[i] = (angular_accel(i) - _ups_wd_lp[i]) / g - (_ups_u_act[i] - _ups_u_lp[i]);
+				dist_max = math::max(dist_max, fabsf(_ups_disturbance[i]));
+			}
+		}
+
+		_ups_filters_valid = true;
+
+	} else {
+		_ups_filters_valid = false;
+		_ups_disturbance[0] = _ups_disturbance[1] = 0.f;
 	}
+
+	const float dist_trigger = _param_fw_ups_d_trg.get();
+	const bool dist_high = dist_trigger > FLT_EPSILON && dist_max > dist_trigger;
+	_ups_dist_time = dist_high ? _ups_dist_time + dt : 0.f;
+
+	uint8_t trigger = upset_recovery_status_s::TRIGGER_NONE;
+
+	if (tilt > radians(_param_fw_ups_tilt.get())) {
+		trigger = upset_recovery_status_s::TRIGGER_TILT;
+
+	} else if (_ups_dist_time > _param_fw_ups_d_t.get() && dist_high) {
+		trigger = upset_recovery_status_s::TRIGGER_DISTURBANCE;
+
+	} else if (_ups_rate_time > _param_fw_ups_rt_t.get() && rate_high) {
+		trigger = upset_recovery_status_s::TRIGGER_RATE;
+	}
+
+	if (!_upset && trigger != upset_recovery_status_s::TRIGGER_NONE) {
+		_upset = true;
+		_upset_trigger = trigger;
+		_upset_start = now;
+		_ups_calm_time = 0.f;
+		static constexpr const char *names[4] {"", "tilt", "rate", "disturbance"};
+		PX4_WARN("upset recovery (%s): tilt %.0f deg, rates %.0f %.0f deg/s, disturbance %.2f", names[trigger],
+			 (double)math::degrees(tilt), (double)math::degrees(rates(0)), (double)math::degrees(rates(1)), (double)dist_max);
+
+	} else if (_upset) {
+		// Calm: level, nose up, rates and disturbance well below their triggers, for a second
+		const bool calm = tilt < radians(_param_fw_ups_exit.get()) && euler.theta() > -radians(_param_fw_ups_p_dn.get())
+				  && (!rates.isAllFinite() || (fabsf(rates(0)) < 0.5f * rate_trigger && fabsf(rates(1)) < 0.5f * rate_trigger))
+				  && dist_max < 0.5f * math::max(dist_trigger, FLT_EPSILON);
+		_ups_calm_time = calm ? _ups_calm_time + dt : 0.f;
+
+		if (_ups_calm_time > 1.f) {
+			_upset = false;
+			PX4_INFO("upset recovered after %.1f s", (double)(hrt_elapsed_time(&_upset_start) * 1e-6f));
+		}
+	}
+
+	status.timestamp = now;
+	status.active = _upset;
+	status.trigger = _upset_trigger;
+	status.tilt = tilt;
+	status.disturbance[0] = _ups_disturbance[0];
+	status.disturbance[1] = _ups_disturbance[1];
+	_upset_status_pub.publish(status);
 
 	return _upset;
 }

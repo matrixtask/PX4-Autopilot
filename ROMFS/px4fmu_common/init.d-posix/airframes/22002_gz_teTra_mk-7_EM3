@@ -526,6 +526,12 @@ param set-default FW_UPS_TILT 60
 param set-default FW_UPS_EXIT 20
 param set-default FW_UPS_NZ 2.5
 param set-default FW_UPS_THR 0.0
+# Early triggers (before the attitude has gone): roll/pitch rate > 40 deg/s for 0.2 s, or an angular acceleration the
+# surfaces do not explain > 1 full surface authority for 0.1 s (a Gamma 150 wake core is ~5).
+param set-default FW_UPS_RT_TRG 40
+param set-default FW_UPS_RT_T 0.2
+param set-default FW_UPS_D_TRG 1.0
+param set-default FW_UPS_D_T 0.1
 # Torque redistribution surfaces <-> lift rotors (VT_RD_*): authority from the virtual wind tunnel of this model
 # (docs/b_matrix/b_matrix.json in mk7_mission): KS = surface moment / q at full torque setpoint [m^3],
 # BU = lift-rotor moment at full torque setpoint around collective 0.3 [N m].

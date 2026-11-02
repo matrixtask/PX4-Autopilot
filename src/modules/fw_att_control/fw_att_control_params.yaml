@@ -259,3 +259,50 @@ parameters:
       max: 1.0
       decimal: 2
       increment: 0.05
+    FW_UPS_RT_TRG:
+      description:
+        short: Upset recovery rate trigger
+        long: |-
+          Roll or pitch rate that starts the recovery when it lasts FW_UPS_RT_T. Must be well above the rates of normal
+          manoeuvres (FW_R_RMAX, FW_P_RMAX_*). 0 disables the rate trigger.
+      type: float
+      default: 40.0
+      unit: deg/s
+      min: 0.0
+      max: 180.0
+      decimal: 0
+      increment: 5
+    FW_UPS_RT_T:
+      description:
+        short: Upset recovery rate trigger time
+      type: float
+      default: 0.2
+      unit: s
+      min: 0.0
+      max: 2.0
+      decimal: 2
+      increment: 0.05
+    FW_UPS_D_TRG:
+      description:
+        short: Upset recovery disturbance trigger
+        long: |-
+          Roll or pitch angular acceleration that the control surfaces do not explain, in units of the full surface
+          authority (FW_INDI_G_R / FW_INDI_G_P times the dynamic pressure), high-passed with 1 s. Starts the recovery
+          when it lasts FW_UPS_D_T: a wake vortex or a strong gust is detected before the attitude has gone.
+          0 disables the disturbance trigger (also when FW_INDI_G_R / FW_INDI_G_P are 0).
+      type: float
+      default: 0.0
+      min: 0.0
+      max: 10.0
+      decimal: 2
+      increment: 0.1
+    FW_UPS_D_T:
+      description:
+        short: Upset recovery disturbance trigger time
+      type: float
+      default: 0.1
+      unit: s
+      min: 0.0
+      max: 2.0
+      decimal: 2
+      increment: 0.05
