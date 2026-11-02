@@ -546,7 +546,9 @@ param set-default VT_RD_CMAX 0.5
 param set-default VT_RD_HOLD 3.0
 param set-default VT_RD_SLEW 4.0
 param set-default VT_RD_VMIN 20
-# INDI (off by default; FW_INDI_EN 1 to use): G = KS / I (Ixx 8946, Iyy 6576 kg m^2 from the model links)
+# INDI on roll and pitch: G = KS / I (Ixx 8946, Iyy 6576 kg m^2 from the model links). HQ01 Gamma 150 wake core:
+# peak roll 13.9 deg with INDI vs 147 deg with the PID (both with the redistribution).
+param set-default FW_INDI_EN 1
 param set-default FW_INDI_G_R 0.000174
 param set-default FW_INDI_G_P 0.0032
 param set-default FW_INDI_K_R 4.0
