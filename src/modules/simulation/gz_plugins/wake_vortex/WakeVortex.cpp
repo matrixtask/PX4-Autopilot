@@ -72,12 +72,12 @@ void WakeVortex::Configure(const gz::sim::Entity &entity, const std::shared_ptr<
 	_link.EnableVelocityChecks(ecm, true);
 	_ready = _link.Valid(ecm) && !_surfaces.empty() && !_vortices.empty();
 
-	gzmsg << "WakeVortex: " << _vortices.size() << " encounter(s), " << _surfaces.size() << " surface(s)"
-	      << (_ready ? "" : " - inactive") << std::endl;
+	gzwarn << "WakeVortex: " << _vortices.size() << " encounter(s), " << _surfaces.size() << " surface(s)"
+	       << (_ready ? "" : " - inactive") << std::endl;
 
 	for (const auto &v : _vortices) {
-		gzmsg << "WakeVortex: centre " << v.center << " axis " << v.axis << " Gamma " << v.gamma << " rc " << v.rc
-		      << " b0 " << v.b0 << " length " << 2.0 * v.half_length << std::endl;
+		gzwarn << "WakeVortex: centre " << v.center << " axis " << v.axis << " Gamma " << v.gamma << " rc " << v.rc
+		       << " b0 " << v.b0 << " length " << 2.0 * v.half_length << std::endl;
 	}
 }
 
@@ -122,14 +122,14 @@ void WakeVortex::PreUpdate(const gz::sim::UpdateInfo &info, gz::sim::EntityCompo
 		return;
 	}
 
-	const auto pose_opt = _link.WorldPose(ecm);
+	// Link::WorldPose() needs a WorldPose component nobody creates for this link: compute it from the pose chain
+	const gz::math::Pose3d pose = gz::sim::worldPose(_link.Entity(), ecm);
 	const auto v_opt = _link.WorldLinearVelocity(ecm);
 
-	if (!pose_opt || !v_opt) {
+	if (!v_opt) {
 		return;
 	}
 
-	const gz::math::Pose3d pose = *pose_opt;
 	gz::math::Vector3d v_air = *v_opt;
 	const auto wind = ecm.Component<gz::sim::components::WorldLinearVelocity>(
 				  ecm.EntityByComponents(gz::sim::components::Wind()));
@@ -181,8 +181,8 @@ void WakeVortex::PreUpdate(const gz::sim::UpdateInfo &info, gz::sim::EntityCompo
 	if (t - _last_report > 0.5) {
 		_last_report = t;
 		const gz::math::Vector3d torque_body = pose.Rot().RotateVectorReverse(torque);
-		gzmsg << "WakeVortex t " << t << " lift " << force.Dot(up_body) << " N  roll " << torque_body.X()
-		      << " pitch " << torque_body.Y() << " yaw " << torque_body.Z() << " Nm" << std::endl;
+		gzwarn << "WakeVortex t " << t << " lift " << force.Dot(up_body) << " N  roll " << torque_body.X()
+		       << " pitch " << torque_body.Y() << " yaw " << torque_body.Z() << " Nm" << std::endl;
 	}
 }
 
