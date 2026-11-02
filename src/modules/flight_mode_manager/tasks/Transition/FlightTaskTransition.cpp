@@ -54,6 +54,7 @@ FlightTaskTransition::FlightTaskTransition()
 	param_get(param_find("VT_F_YAW_HOLD"), &_param_vt_f_yaw_hold);
 	param_get(param_find("MPC_ACC_DECOUPLE"), &_param_mpc_acc_decouple);
 	param_get(param_find("MPC_JERK_AUTO"), &_param_mpc_jerk_auto);
+	param_get(param_find("FW_T_REF_ACC"), &_param_fw_t_ref_acc);
 	param_get(param_find("MPC_ACC_HOR"), &_param_mpc_acc_hor);
 	param_get(param_find("VT_BFF_VEXIT"), &_param_vt_bff_vexit);
 	loadBrakeParams();
@@ -103,6 +104,8 @@ bool FlightTaskTransition::activate(const trajectory_setpoint_s &last_setpoint)
 		_vel_z_filter.reset(_velocity(2));
 	}
 
+	_vel_z_setpoint = _vel_z_filter.getState();
+
 	const Vector2f acceleration_xy{_sub_vehicle_local_position.get().ax, _sub_vehicle_local_position.get().ay};
 	_accel_filter.reset(acceleration_xy);
 
@@ -147,7 +150,19 @@ bool FlightTaskTransition::update()
 	// Vertical velocity: upstream holds altitude (target 0). With VT_F_TRANS_VZ / VT_B_TRANS_VZ set, the
 	// transition climbs towards / descends towards the mission altitude instead (see computeVerticalVelocityTarget).
 	const float vz_target = computeVerticalVelocityTarget();
-	_velocity_setpoint(2) = _vel_z_filter.update(vz_target, _deltatime);
+	// Vertical acceleration of the transition climb / descent limited to FW_T_REF_ACC (the same 0.15 g as the
+	// fixed-wing altitude reference): the first-order filter alone started the 7 m/s climb at 3.5 m/s^2 (nz 1.30, HQ01).
+	const float vz_filtered = _vel_z_filter.update(vz_target, _deltatime);
+
+	if (_param_fw_t_ref_acc > FLT_EPSILON && PX4_ISFINITE(_vel_z_setpoint)) {
+		const float step = _param_fw_t_ref_acc * _deltatime;
+		_vel_z_setpoint = math::constrain(vz_filtered, _vel_z_setpoint - step, _vel_z_setpoint + step);
+
+	} else {
+		_vel_z_setpoint = vz_filtered;
+	}
+
+	_velocity_setpoint(2) = _vel_z_setpoint;
 
 	// the default MPC_Z_VEL_MAX_DN (slow MC descent) must not cap the faster wing-borne descent
 	if (vz_target > _constraints.speed_down) {
@@ -329,8 +344,23 @@ float FlightTaskTransition::computeBackTransitionDecelSetpoint() const
 		const float dist_to_target = pos_to_target.norm();
 		const float closing_speed = dist_to_target > FLT_EPSILON ? velocity_xy.dot(pos_to_target / dist_to_target) : 0.f;
 
-		if (dist_to_target > FLT_EPSILON && closing_speed > FLT_EPSILON) {
+		// The multicopter takes over at VT_BFF_VEXIT and needs its own stopping distance from there (MPC_ACC_HOR,
+		// MPC_JERK_AUTO): brake to VT_BFF_VEXIT that far before the point. Braking to zero at the point handed
+		// over at 3 m/s already 3 m past the pad; the MC trajectory saturated (18 deg pitch) and overshot 12 m (HQ01 v15).
+		float tail = 0.f;
+
+		if (_param_vt_bff_vexit > FLT_EPSILON && _param_mpc_acc_hor > FLT_EPSILON && _param_mpc_jerk_auto > FLT_EPSILON) {
+			tail = _param_vt_bff_vexit * _param_vt_bff_vexit / (2.f * _param_mpc_acc_hor)
+			       + _param_vt_bff_vexit * _param_mpc_acc_hor / _param_mpc_jerk_auto;
+		}
+
+		const float v_end = math::min(_param_vt_bff_vexit, closing_speed);
+
+		if (dist_to_target > tail + 1.f && closing_speed > FLT_EPSILON) {
 			// Backtransition target point is ahead of the vehicle, compute the desired deceleration
+			deceleration_setpoint = (closing_speed * closing_speed - v_end * v_end) / (2.f * (dist_to_target - tail));
+
+		} else if (dist_to_target > FLT_EPSILON && closing_speed > FLT_EPSILON) {
 			deceleration_setpoint = closing_speed * closing_speed / (2.f * dist_to_target);
 
 		} else {

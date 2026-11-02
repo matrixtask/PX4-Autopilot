@@ -103,6 +103,8 @@ private:
 	int32_t _param_mpc_acc_decouple{1};
 	float _param_mpc_jerk_auto{0.f};      ///< MC trajectory jerk: braking taper at the end of the back transition
 	float _param_mpc_acc_hor{0.f};        ///< MC trajectory acceleration the braking hands over to
+	float _param_fw_t_ref_acc{0.f};       ///< vertical acceleration limit of the transition climb / descent
+	float _vel_z_setpoint{NAN};           ///< [m/s] rate-limited vertical velocity setpoint
 	float _param_vt_bff_vexit{0.f};       ///< speed at which the back transition hands over to MC
 	float _brake_pitch{NAN};             ///< [rad] rate-limited pitch command
 	float _brake_trim{0.f};              ///< [m/s^2] decel trim (VT_B_DEC_I) on top of the feed-forward

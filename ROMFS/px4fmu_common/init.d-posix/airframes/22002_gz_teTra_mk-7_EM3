@@ -232,7 +232,7 @@ param set-default MPC_THR_HOVER 0.42
 param set-default MPC_THR_MIN 0.05
 param set-default MPC_THR_XY_MARG 0.08
 param set-default MPC_TKO_SPEED 1.0
-param set-default MPC_TKO_RAMP_T 4.0
+param set-default MPC_TKO_RAMP_T 7.0  # 4 s: thrust 0.11 -> 0.63 in 1 s at lift-off, nz 1.38 (HQ01 v15)
 param set-default MPC_LAND_SPEED 0.6
 param set-default MPC_Z_VEL_MAX_DN 3.0  # vertical descent 0.23 vh (see VT_B_TRANS_VZLO); was 1.5 (handoff: 4 m/s diverged)
 param set-default NAV_ACC_RAD 2
@@ -366,7 +366,7 @@ param set-default FW_AIRSPD_TRIM 60
 param set-default FW_AIRSPD_MAX 80
 # Roll setpoint slew (default 90 deg/s): the turn to the first leg started as a 0 -> -9 deg step at the end of the
 # front transition and overshot to -13.6 deg (11/02). 10 deg/s: 20 deg bank in 2 s.
-param set-default FW_PN_R_SLEW_MAX 10
+param set-default FW_PN_R_SLEW_MAX 5  # 10 deg/s: 6.8 deg/s roll rate at the turn after the front transition (v15); 5: comfort, NPFG period 30 s
 param set-default FW_R_LIM 25  # roll demand must not saturate (limit cycle at 15 deg); acceptance <= 30 deg
 param set-default FW_YD_GAIN 5.0
 param set-default MIS_DIST_1WP 0
