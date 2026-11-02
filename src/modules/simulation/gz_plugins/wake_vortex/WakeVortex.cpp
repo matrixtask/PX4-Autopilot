@@ -68,11 +68,34 @@ void WakeVortex::Configure(const gz::sim::Entity &entity, const std::shared_ptr<
 		}
 	}
 
+	const char *env_rel = std::getenv("MK7_WAKE_REL");
+
+	if (env_rel != nullptr) {
+		std::stringstream all(env_rel);
+
+		for (std::string entry; std::getline(all, entry, ';');) {
+			std::replace(entry.begin(), entry.end(), ',', ' ');
+			std::istringstream in(entry);
+			Trigger t;
+			double length{};
+
+			if (!(in >> t.speed >> t.direction >> t.t_min >> t.vortex.gamma >> t.vortex.rc >> t.vortex.b0 >> length
+			      >> t.lateral >> t.vertical)) {
+				continue;
+			}
+
+			t.vortex.rc = std::max(t.vortex.rc, 0.1);
+			t.vortex.half_length = 0.5 * length;
+			_triggers.push_back(t);
+		}
+	}
+
 	_link = gz::sim::Link(_model.LinkByName(ecm, _link_name));
 	_link.EnableVelocityChecks(ecm, true);
-	_ready = _link.Valid(ecm) && !_surfaces.empty() && !_vortices.empty();
+	_ready = _link.Valid(ecm) && !_surfaces.empty() && (!_vortices.empty() || !_triggers.empty());
 
-	gzwarn << "WakeVortex: " << _vortices.size() << " encounter(s), " << _surfaces.size() << " surface(s)"
+	gzwarn << "WakeVortex: " << _vortices.size() << " fixed + " << _triggers.size() << " triggered encounter(s), "
+	       << _surfaces.size() << " surface(s)"
 	       << (_ready ? "" : " - inactive") << std::endl;
 
 	for (const auto &v : _vortices) {
@@ -139,6 +162,38 @@ void WakeVortex::PreUpdate(const gz::sim::UpdateInfo &info, gz::sim::EntityCompo
 	}
 
 	const double speed = v_air.Length();
+	const double t = std::chrono::duration<double>(info.simTime).count();
+
+	for (auto &trig : _triggers) {
+		if (trig.fired || t < trig.t_min || _last_speed < 0.0) {
+			continue;
+		}
+
+		const bool crossed = (trig.direction > 0) ? (_last_speed < trig.speed && speed >= trig.speed)
+				     : (_last_speed > trig.speed && speed <= trig.speed);
+
+		if (!crossed) {
+			continue;
+		}
+
+		gz::math::Vector3d heading{v_air.X(), v_air.Y(), 0.0};
+
+		if (heading.Length() < 1.0) {
+			continue;
+		}
+
+		Vortex v = trig.vortex;
+		v.axis = heading.Normalized();
+		v.right = v.axis.Cross(gz::math::Vector3d::UnitZ);
+		v.center = pose.Pos() - v.right * trig.lateral - gz::math::Vector3d::UnitZ * trig.vertical
+			   + v.axis * (v.half_length - kFadeLength);
+		_vortices.push_back(v);
+		trig.fired = true;
+		gzwarn << "WakeVortex: triggered at t " << t << " speed " << speed << ", centre " << v.center << " axis "
+		       << v.axis << " Gamma " << v.gamma << std::endl;
+	}
+
+	_last_speed = speed;
 
 	if (speed < 3.0) {
 		return; // hover: the wing makes no lift worth changing (rotor inflow not modelled)
@@ -176,12 +231,10 @@ void WakeVortex::PreUpdate(const gz::sim::UpdateInfo &info, gz::sim::EntityCompo
 
 	_link.AddWorldWrench(ecm, force, torque);
 
-	const double t = std::chrono::duration<double>(info.simTime).count();
-
 	if (t - _last_report > 0.5) {
 		_last_report = t;
 		const gz::math::Vector3d torque_body = pose.Rot().RotateVectorReverse(torque);
-		gzwarn << "WakeVortex t " << t << " lift " << force.Dot(up_body) << " N  roll " << torque_body.X()
+		gzwarn << "WakeVortex t " << t << " V " << speed << " lift " << force.Dot(up_body) << " N  roll " << torque_body.X()
 		       << " pitch " << torque_body.Y() << " yaw " << torque_body.Z() << " Nm" << std::endl;
 	}
 }

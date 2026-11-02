@@ -17,7 +17,14 @@
  * environment variable MK7_WAKE, encounters separated by ';':
  *   east,north,up,heading_deg,gamma,rc,b0,length   (world ENU [m], axis heading from north clockwise [deg],
  *                                                   circulation [m^2/s], core radius [m], core spacing [m], length [m])
- * Without MK7_WAKE the plugin does nothing.
+ * or MK7_WAKE_REL, placed relative to the vehicle when it first passes a speed (reproducible worst cases; PX4's local
+ * frame and the gz world drift apart by tens of metres over the 50 km route):
+ *   speed,direction,t_min,gamma,rc,b0,length,lateral,vertical
+ *   (trigger when the air speed crosses `speed` [m/s] upwards (direction +1) or downwards (-1) after sim time t_min
+ *   [s]; the pair axis is then the current horizontal flight direction and its centre is placed so the vehicle is at
+ *   `lateral` [m, right +] and `vertical` [m, up +] from the centre: lateral = -b0/2 puts the left core on the
+ *   vehicle's centre line; the vehicle flies along the pair.)
+ * Without MK7_WAKE / MK7_WAKE_REL the plugin does nothing.
  *
  * Not modelled: the induced flow on the lift rotors and the pusher, the vortex descent and decay, the fuselage.
  */
@@ -59,6 +66,16 @@ public:
 		double dcl_max{1.0}; ///< |dCL| limit (stall)
 	};
 
+	struct Trigger {
+		double speed{0.0};
+		int direction{-1};
+		double t_min{0.0};
+		Vortex vortex;   ///< gamma, rc, b0, half_length; position and axis set when triggered
+		double lateral{0.0};
+		double vertical{0.0};
+		bool fired{false};
+	};
+
 	/** Induced velocity [m/s] of all vortex pairs at a world point. */
 	static gz::math::Vector3d induced(const std::vector<Vortex> &vortices, const gz::math::Vector3d &p);
 
@@ -70,6 +87,8 @@ private:
 	int _strips{16};
 	std::vector<Surface> _surfaces;
 	std::vector<Vortex> _vortices;
+	std::vector<Trigger> _triggers;
+	double _last_speed{-1.0};
 	double _last_report{-1.0};
 	bool _ready{false};
 };
