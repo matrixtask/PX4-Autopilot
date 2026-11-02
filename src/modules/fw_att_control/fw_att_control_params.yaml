@@ -183,3 +183,79 @@ parameters:
       max: 90.0
       decimal: 1
       increment: 0.5
+- group: FW Upset Recovery
+  definitions:
+    FW_UPS_EN:
+      description:
+        short: Enable the upset recovery
+        long: |-
+          When the tilt (angle between the body z axis and the vertical) exceeds FW_UPS_TILT in fixed-wing
+          flight or a transition, the attitude controller ignores the guidance attitude: it rolls the wings
+          level by the shortest way while holding the pitch, then pulls the nose to the horizon at the load
+          factor FW_UPS_NZ. Thrust is limited to FW_UPS_THR while the nose is below -FW_UPS_P_DN or the
+          aircraft is inverted. Ends when the tilt is below FW_UPS_EXIT and the nose is above -FW_UPS_P_DN.
+      type: boolean
+      default: 0
+    FW_UPS_TILT:
+      description:
+        short: Upset recovery entry tilt
+      type: float
+      default: 60.0
+      unit: deg
+      min: 30.0
+      max: 120.0
+      decimal: 0
+      increment: 5
+    FW_UPS_EXIT:
+      description:
+        short: Upset recovery exit tilt
+        long: Must be below FW_UPS_TILT (hysteresis).
+      type: float
+      default: 20.0
+      unit: deg
+      min: 5.0
+      max: 60.0
+      decimal: 0
+      increment: 5
+    FW_UPS_RMAX:
+      description:
+        short: Upset recovery roll rate limit
+        long: Replaces FW_R_RMAX during the recovery when larger.
+      type: float
+      default: 90.0
+      unit: deg/s
+      min: 0.0
+      max: 180.0
+      decimal: 0
+      increment: 5
+    FW_UPS_NZ:
+      description:
+        short: Upset recovery pull-out load factor
+        long: Limits the pitch-up rate to (FW_UPS_NZ - 1) g / V during the pull-out.
+      type: float
+      default: 2.5
+      unit: g0
+      min: 1.2
+      max: 4.0
+      decimal: 1
+      increment: 0.1
+    FW_UPS_P_DN:
+      description:
+        short: Upset recovery nose-low pitch
+        long: Below -FW_UPS_P_DN the thrust is limited to FW_UPS_THR; the recovery ends only above it.
+      type: float
+      default: 10.0
+      unit: deg
+      min: 0.0
+      max: 45.0
+      decimal: 0
+      increment: 1
+    FW_UPS_THR:
+      description:
+        short: Upset recovery thrust limit (nose low or inverted)
+      type: float
+      default: 0.0
+      min: 0.0
+      max: 1.0
+      decimal: 2
+      increment: 0.05

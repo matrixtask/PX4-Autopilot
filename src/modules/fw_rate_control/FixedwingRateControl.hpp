@@ -38,6 +38,7 @@
 
 #include <drivers/drv_hrt.h>
 #include <lib/mathlib/mathlib.h>
+#include <lib/atmosphere/atmosphere.h>
 #include <lib/mathlib/math/filter/AlphaFilter.hpp>
 #include <lib/parameters/param.h>
 #include <lib/perf/perf_counter.h>
@@ -222,8 +223,31 @@ private:
 		(ParamFloat<px4::params::TRIM_YAW>) _param_trim_yaw,
 
 		(ParamInt<px4::params::FW_SPOILERS_MAN>) _param_fw_spoilers_man,
-		(ParamInt<px4::params::FW_FLAPS_MAN>) _param_fw_flaps_man
+		(ParamInt<px4::params::FW_FLAPS_MAN>) _param_fw_flaps_man,
+
+		(ParamFloat<px4::params::FW_TQ_LIM>) _param_fw_tq_lim,
+		(ParamBool<px4::params::FW_INDI_EN>) _param_fw_indi_en,
+		(ParamFloat<px4::params::FW_INDI_G_R>) _param_fw_indi_g_r,
+		(ParamFloat<px4::params::FW_INDI_G_P>) _param_fw_indi_g_p,
+		(ParamFloat<px4::params::FW_INDI_K_R>) _param_fw_indi_k_r,
+		(ParamFloat<px4::params::FW_INDI_K_P>) _param_fw_indi_k_p,
+		(ParamFloat<px4::params::FW_INDI_TACT>) _param_fw_indi_tact,
+		(ParamFloat<px4::params::IMU_DGYRO_CUTOFF>) _param_imu_dgyro_cutoff
 	)
+
+	// VTOL torque redistribution (vtol_att_control VT_RD_*), looked up at runtime: absent on fixed-wing-only builds
+	struct {
+		bool en{false};
+		float ks[2] {};
+		float bu[2] {};
+	} _vt_rd;
+	void updateVtolRedistributionParams();
+
+	matrix::Vector3f _surface_unallocated{};	///< control_allocator_status of the surfaces, last cycle
+	matrix::Vector3f _rotor_unallocated{};	///< control_allocator_status of the lift rotors (VTOL), last cycle
+	matrix::Vector3f _indi_u_act{};		///< INDI: achieved torque through the actuator lag
+	matrix::Vector3f _indi_u_filt{};		///< INDI: ... and the angular acceleration filter delay
+	bool _indi_active{false};
 
 	RateControl _rate_control; ///< class for rate control calculations
 	GainCompression3d _gain_compression{this};
@@ -239,4 +263,12 @@ private:
 	void		vehicle_land_detected_poll();
 
 	float 		get_airspeed_and_update_scaling(float dt);
+
+	/**
+	 * Incremental NDI on roll and pitch: u = u0 + (K (w_sp - w) - dw_meas) / (G q).
+	 * @param active set to 1 for the axes INDI controls
+	 * @return torque setpoint including the trim (only valid where active)
+	 */
+	matrix::Vector3f updateIndi(const matrix::Vector3f &rates, const matrix::Vector3f &rates_sp,
+				    const matrix::Vector3f &angular_accel, float airspeed, float dt, matrix::Vector3f &active);
 };

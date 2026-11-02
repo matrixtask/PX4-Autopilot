@@ -76,6 +76,8 @@ FixedwingRateControl::init()
 int
 FixedwingRateControl::parameters_update()
 {
+	updateVtolRedistributionParams();
+
 	const Vector3f rate_p = Vector3f(_param_fw_rr_p.get(), _param_fw_pr_p.get(), _param_fw_yr_p.get());
 	const Vector3f rate_i = Vector3f(_param_fw_rr_i.get(), _param_fw_pr_i.get(), _param_fw_yr_i.get());
 	const Vector3f rate_d = Vector3f(_param_fw_rr_d.get(), _param_fw_pr_d.get(), _param_fw_yr_d.get());
@@ -150,6 +152,113 @@ FixedwingRateControl::vehicle_land_detected_poll()
 			_landed = vehicle_land_detected.landed;
 		}
 	}
+}
+
+void FixedwingRateControl::updateVtolRedistributionParams()
+{
+	const char *names[5] {"VT_RD_EN", "VT_RD_KS_R", "VT_RD_KS_P", "VT_RD_BU_R", "VT_RD_BU_P"};
+	float values[5] {};
+	bool found = true;
+
+	for (int i = 0; i < 5; i++) {
+		const param_t h = param_find(names[i]);
+
+		if (h == PARAM_INVALID) {
+			found = false;
+			break;
+		}
+
+		if (i == 0) {
+			int32_t v = 0;
+			param_get(h, &v);
+			values[i] = (float)v;
+
+		} else {
+			param_get(h, &values[i]);
+		}
+	}
+
+	_vt_rd.en = found && values[0] > 0.5f;
+	_vt_rd.ks[0] = values[1];
+	_vt_rd.ks[1] = values[2];
+	_vt_rd.bu[0] = values[3];
+	_vt_rd.bu[1] = values[4];
+}
+
+Vector3f FixedwingRateControl::updateIndi(const Vector3f &rates, const Vector3f &rates_sp, const Vector3f &angular_accel,
+		float airspeed, float dt, Vector3f &active)
+{
+	active.zero();
+
+	const Vector3f gain(_param_fw_indi_g_r.get(), _param_fw_indi_g_p.get(), 0.f);
+	const Vector3f k(_param_fw_indi_k_r.get(), _param_fw_indi_k_p.get(), 0.f);
+	const float q_dyn = 0.5f * atmosphere::kAirDensitySeaLevelStandardAtmos * airspeed * airspeed;
+
+	// Torque produced last cycle, in surface units: the setpoint minus what the surfaces could not give, plus what a VTOL
+	// handed on to the lift rotors (VT_RD_EN) and they did give. Counting the rotor part keeps the increment consistent
+	// when the surfaces are saturated and the rotors carry the rest.
+	const Vector3f u_prev(_vehicle_torque_setpoint.xyz);
+	const float q_dyn_ach = 0.5f * atmosphere::kAirDensitySeaLevelStandardAtmos * airspeed * airspeed;
+	const float *ks = _vt_rd.ks;
+	const float *bu = _vt_rd.bu;
+	Vector3f u_achieved = u_prev - _surface_unallocated;
+
+	for (int i = 0; i < 3; i++) {
+		u_achieved(i) = math::constrain(u_achieved(i), -1.f, 1.f);
+
+		if (i < 2 && _vt_rd.en && ks[i] > FLT_EPSILON && bu[i] > FLT_EPSILON && q_dyn_ach > 1.f
+		    && PX4_ISFINITE(_surface_unallocated(i))) {
+			const float ratio = ks[i] * q_dyn_ach / bu[i]; // rotor units per surface unit
+			const float rotor_missing = PX4_ISFINITE(_rotor_unallocated(i)) ? _rotor_unallocated(i) / ratio : 0.f;
+			// part of the surface excess the rotors delivered (same sign as the excess, at most the excess)
+			const float handed = _surface_unallocated(i);
+			const float delivered = (handed > 0.f) ? math::constrain(handed - rotor_missing, 0.f, handed)
+						: math::constrain(handed - rotor_missing, handed, 0.f);
+			u_achieved(i) += delivered;
+		}
+	}
+
+	const bool enabled = _param_fw_indi_en.get() && _in_fw_or_transition_wo_tailsitter_transition && !_landed
+			     && _vcontrol_mode.flag_control_attitude_enabled && PX4_ISFINITE(airspeed)
+			     && airspeed > _param_fw_airspd_stall.get() && angular_accel.isAllFinite() && u_achieved.isAllFinite();
+
+	if (!enabled) {
+		_indi_u_act = u_achieved;
+		_indi_u_filt = u_achieved;
+		_indi_active = false;
+		return u_achieved;
+	}
+
+	if (!_indi_active) {
+		// bumpless start from the torque the PID was commanding
+		_indi_u_act = u_achieved;
+		_indi_u_filt = u_achieved;
+		_indi_active = true;
+	}
+
+	// Same delay on the torque as on the measured angular acceleration: the actuator lag (servo, FW_INDI_TACT)
+	// and the angular acceleration low-pass (IMU_DGYRO_CUTOFF, approximated by a first order with the
+	// group delay of the 2nd-order Butterworth, sqrt(2) / (2 pi fc)).
+	const float tact = math::max(_param_fw_indi_tact.get(), 0.f);
+	_indi_u_act += (u_achieved - _indi_u_act) * (dt / (tact + dt));
+
+	const float fc = math::max(_param_imu_dgyro_cutoff.get(), 1.f);
+	const float tau_f = M_SQRT2_F / (2.f * M_PI_F * fc);
+	_indi_u_filt += (_indi_u_act - _indi_u_filt) * (dt / (tau_f + dt));
+
+	Vector3f u = u_achieved;
+
+	for (int i = 0; i < 2; i++) {
+		const float g = gain(i) * q_dyn; // [rad/s^2 per unit torque]
+
+		if (g > FLT_EPSILON && k(i) > FLT_EPSILON) {
+			const float nu = k(i) * (rates_sp(i) - rates(i)); // [rad/s^2] desired angular acceleration
+			u(i) = _indi_u_filt(i) + (nu - angular_accel(i)) / g;
+			active(i) = 1.f;
+		}
+	}
+
+	return u;
 }
 
 float FixedwingRateControl::get_airspeed_and_update_scaling(float dt)
@@ -326,6 +435,8 @@ void FixedwingRateControl::Run()
 			// Set saturation flags for VTOL differential thrust feature
 			// If differential thrust is enabled in an axis, assume it's the only torque authority and only update saturation using matrix 0 allocating the motors.
 			if (_control_allocator_status_subs[0].update(&control_allocator_status)) {
+				_rotor_unallocated = Vector3f(control_allocator_status.unallocated_torque);
+
 				for (size_t i = 0; i < 3; i++) {
 					if (diffthr_enabled(i)) {
 						_rate_control.setPositiveSaturationFlag(i, control_allocator_status.unallocated_torque[i] > FLT_EPSILON);
@@ -336,6 +447,8 @@ void FixedwingRateControl::Run()
 
 			// Set saturation flags for control surface controlled axes
 			if (_control_allocator_status_subs[_vehicle_status.is_vtol ? 1 : 0].update(&control_allocator_status)) {
+				_surface_unallocated = Vector3f(control_allocator_status.unallocated_torque);
+
 				for (size_t i = 0; i < 3; i++) {
 					if (!diffthr_enabled(i)) {
 						_rate_control.setPositiveSaturationFlag(i, control_allocator_status.unallocated_torque[i] > FLT_EPSILON);
@@ -402,6 +515,18 @@ void FixedwingRateControl::Run()
 
 				_gain_compression.update(control_u, dt);
 
+				// Incremental nonlinear dynamic inversion (FW_INDI_EN) on roll and pitch: replaces the PID output.
+				// The returned torque already contains the trim (it is the achieved torque plus an increment).
+				Vector3f indi_axes{};
+				const Vector3f control_indi = updateIndi(rates, body_rates_setpoint, angular_accel, airspeed, dt, indi_axes);
+
+				for (int i = 0; i < 2; i++) {
+					if (indi_axes(i) > 0.5f) {
+						control_u(i) = control_indi(i) - trim(i);
+						_rate_control.resetIntegral(i);
+					}
+				}
+
 				// Special case yaw in Acro: if the parameter FW_ACRO_YAW_EN is not set then don't rate-control yaw
 				if (!_vcontrol_mode.flag_control_attitude_enabled && _vcontrol_mode.flag_control_manual_enabled
 				    && !_param_fw_acro_yaw_en.get()) {
@@ -410,7 +535,15 @@ void FixedwingRateControl::Run()
 				}
 
 				if (control_u.isAllFinite()) {
-					matrix::constrain(control_u + trim, -1.f, 1.f).copyTo(_vehicle_torque_setpoint.xyz);
+					// Roll and pitch may ask for more than the surfaces can give (FW_TQ_LIM > 1): the control allocator
+					// saturates the surfaces and reports the rest as unallocated, which a VTOL hands to the lift rotors.
+					const float tq_lim = math::max(_param_fw_tq_lim.get(), 1.f);
+					const Vector3f limit(tq_lim, tq_lim, 1.f);
+					const Vector3f u = control_u + trim;
+
+					for (int i = 0; i < 3; i++) {
+						_vehicle_torque_setpoint.xyz[i] = math::constrain(u(i), -limit(i), limit(i));
+					}
 
 				} else {
 					_rate_control.resetIntegral();

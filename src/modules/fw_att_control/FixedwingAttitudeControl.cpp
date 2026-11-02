@@ -169,6 +169,41 @@ float FixedwingAttitudeControl::get_airspeed_constrained()
 	return math::constrain(airspeed, _param_fw_airspd_stall.get(), _param_fw_airspd_max.get());
 }
 
+bool FixedwingAttitudeControl::updateUpsetRecovery(const Quatf &q_current)
+{
+	if (!_param_fw_ups_en.get() || _landed || !_in_fw_or_transition_wo_tailsitter_transition) {
+		_upset = false;
+		return false;
+	}
+
+	const float cos_tilt = 1.f - 2.f * (q_current(1) * q_current(1) + q_current(2) * q_current(2));
+	const float tilt = acosf(math::constrain(cos_tilt, -1.f, 1.f));
+	const Eulerf euler(q_current);
+
+	if (!_upset && tilt > radians(_param_fw_ups_tilt.get())) {
+		_upset = true;
+		_upset_start = hrt_absolute_time();
+		PX4_WARN("upset recovery: tilt %.0f deg", (double)math::degrees(tilt));
+
+	} else if (_upset && tilt < radians(_param_fw_ups_exit.get()) && euler.theta() > -radians(_param_fw_ups_p_dn.get())) {
+		_upset = false;
+		PX4_INFO("upset recovered after %.1f s", (double)(hrt_elapsed_time(&_upset_start) * 1e-6f));
+	}
+
+	return _upset;
+}
+
+Quatf FixedwingAttitudeControl::upsetAttitudeSetpoint(const Quatf &q_current) const
+{
+	// 1. Roll to wings level by the shortest way, holding the current pitch: pulling while the lift vector
+	//    points at the ground only steepens the dive.
+	// 2. Once the lift vector is above the horizon (|roll| < 90 deg), pull the nose up to the horizon;
+	//    the load factor limit is applied on the pitch rate.
+	const Eulerf euler(q_current);
+	const float pitch_sp = (fabsf(euler.phi()) > M_PI_2_F) ? euler.theta() : math::max(euler.theta(), 0.f);
+	return Quatf(Eulerf(0.f, pitch_sp, euler.psi()));
+}
+
 void FixedwingAttitudeControl::Run()
 {
 	if (should_exit()) {
@@ -295,10 +330,19 @@ void FixedwingAttitudeControl::Run()
 			/* Run attitude controllers */
 
 			if (_vcontrol_mode.flag_control_attitude_enabled && _in_fw_or_transition_wo_tailsitter_transition) {
-				const Quatf q_sp(_att_sp.q_d);
+				Quatf q_sp(_att_sp.q_d);
 
 				if (q_sp.isAllFinite()) {
 					const Quatf q_current(att.q);
+
+					// Upset recovery (FW_UPS_EN): a gust or a wake vortex has rolled the aircraft past FW_UPS_TILT.
+					// Overrides the guidance attitude until the wings are level and the nose is back up.
+					const bool upset = updateUpsetRecovery(q_current);
+
+					if (upset) {
+						q_sp = upsetAttitudeSetpoint(q_current);
+					}
+
 					const Vector3f att_err = computeAttitudeError(q_current, q_sp);
 
 					Vector3f body_rates_setpoint;
@@ -313,13 +357,27 @@ void FixedwingAttitudeControl::Run()
 					// Limit turn coordination to normal flight envelope
 					const float cos_tilt = 1.f - 2.f * (q_current(1) * q_current(1) + q_current(2) * q_current(2));
 					const float tilt = acosf(math::constrain((cos_tilt), -1.f, 1.f));
-					const float ff_scale = math::interpolate(tilt, radians(70.f), radians(75.f), 1.f, 0.f);
+					const float ff_scale = upset ? 0.f : math::interpolate(tilt, radians(70.f), radians(75.f), 1.f, 0.f);
 
 					body_rates_setpoint(1) += ff_scale * pitchrate_ff;
 					body_rates_setpoint(2) += ff_scale * yawrate_ff;
 
-					body_rates_setpoint(0) = math::constrain(body_rates_setpoint(0), -radians(_param_fw_r_rmax.get()), radians(_param_fw_r_rmax.get()));
-					body_rates_setpoint(1) = math::constrain(body_rates_setpoint(1), -radians(_param_fw_p_rmax_neg.get()), radians(_param_fw_p_rmax_pos.get()));
+					float roll_rate_max = radians(_param_fw_r_rmax.get());
+					float pitch_rate_max_pos = radians(_param_fw_p_rmax_pos.get());
+
+					if (upset) {
+						roll_rate_max = math::max(roll_rate_max, radians(_param_fw_ups_rmax.get()));
+						// pull-out: the pitch rate that keeps the load factor at FW_UPS_NZ (q = (n - 1) g / V), with the
+						// measured airspeed (a dive overspeeds past FW_AIRSPD_MAX, where V above is clipped)
+						const float cas = _airspeed_validated_sub.get().calibrated_airspeed_m_s;
+						const float v_pull = PX4_ISFINITE(cas) ? math::max(V, cas) : V;
+						pitch_rate_max_pos = math::min(pitch_rate_max_pos,
+									       (_param_fw_ups_nz.get() - 1.f) * CONSTANTS_ONE_G / v_pull);
+					}
+
+					body_rates_setpoint(0) = math::constrain(body_rates_setpoint(0), -roll_rate_max, roll_rate_max);
+					body_rates_setpoint(1) = math::constrain(body_rates_setpoint(1), -radians(_param_fw_p_rmax_neg.get()),
+								 math::max(pitch_rate_max_pos, 0.f));
 					body_rates_setpoint(2) = math::constrain(body_rates_setpoint(2), -radians(_param_fw_y_rmax.get()), radians(_param_fw_y_rmax.get()));
 
 					autotune_attitude_control_status_s pid_autotune;
@@ -355,6 +413,15 @@ void FixedwingAttitudeControl::Run()
 					_rates_sp.roll = body_rates_setpoint(0);
 					_rates_sp.pitch = body_rates_setpoint(1);
 					_rates_sp.yaw = body_rates_setpoint(2);
+
+					// Nose low or inverted: no thrust into the dive (the speed builds up quickly and the pull-out gets longer)
+					if (upset) {
+						const Eulerf euler_now(q_current);
+
+						if (euler_now.theta() < -radians(_param_fw_ups_p_dn.get()) || fabsf(euler_now.phi()) > M_PI_2_F) {
+							_rates_sp.thrust_body[0] = math::min(_rates_sp.thrust_body[0], _param_fw_ups_thr.get());
+						}
+					}
 
 					_rates_sp.timestamp = hrt_absolute_time();
 

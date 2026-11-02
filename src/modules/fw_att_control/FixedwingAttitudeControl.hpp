@@ -175,8 +175,24 @@ private:
 		(ParamFloat<px4::params::FW_WR_P>) _param_fw_wr_p,
 
 		(ParamFloat<px4::params::FW_Y_RMAX>) _param_fw_y_rmax,
-		(ParamFloat<px4::params::FW_MAN_YR_MAX>) _param_man_yr_max
+		(ParamFloat<px4::params::FW_MAN_YR_MAX>) _param_man_yr_max,
+
+		(ParamBool<px4::params::FW_UPS_EN>) _param_fw_ups_en,
+		(ParamFloat<px4::params::FW_UPS_TILT>) _param_fw_ups_tilt,
+		(ParamFloat<px4::params::FW_UPS_EXIT>) _param_fw_ups_exit,
+		(ParamFloat<px4::params::FW_UPS_RMAX>) _param_fw_ups_rmax,
+		(ParamFloat<px4::params::FW_UPS_NZ>) _param_fw_ups_nz,
+		(ParamFloat<px4::params::FW_UPS_P_DN>) _param_fw_ups_p_dn,
+		(ParamFloat<px4::params::FW_UPS_THR>) _param_fw_ups_thr
 	)
+
+	bool _upset{false};
+	hrt_abstime _upset_start{0};
+
+	/** Upset recovery state from the current attitude (hysteresis FW_UPS_TILT / FW_UPS_EXIT). */
+	bool updateUpsetRecovery(const matrix::Quatf &q_current);
+	/** Recovery attitude: wings level by the shortest way, then nose to the horizon. */
+	matrix::Quatf upsetAttitudeSetpoint(const matrix::Quatf &q_current) const;
 
 	matrix::Vector3f _proportional_gain;
 	WheelController _wheel_ctrl;

@@ -534,6 +534,109 @@ void Standard::fill_actuator_outputs()
 		_thrust_setpoint_0->xyz[0] = _vehicle_thrust_setpoint_virtual_fw->xyz[0];
 		break;
 	}
+
+	redistributeTorque();
+}
+
+void Standard::redistributeTorque()
+{
+	const hrt_abstime now = hrt_absolute_time();
+	const float dt = (_rd_time > 0) ? math::constrain((now - _rd_time) * 1e-6f, 0.f, 0.05f) : 0.f;
+	_rd_time = now;
+
+	for (int i = 0; i < 2; i++) {
+		_ca_status_subs[i].update(&_ca_status[i]);
+	}
+
+	const float cas = _attc->get_calibrated_airspeed();
+
+	if (!_param_vt_rd_en.get() || _vtol_mode == vtol_mode::MC_MODE || !PX4_ISFINITE(cas) || cas < _param_vt_rd_vmin.get()) {
+		_rd_collective = 0.f;
+		return;
+	}
+
+	static constexpr float kRho0 = atmosphere::kAirDensitySeaLevelStandardAtmos;
+	const float q_dyn = 0.5f * kRho0 * cas * cas; // CAS ~ EAS: the pitot measures q directly
+	const float rho_ratio = math::constrain(_attc->getAirDensity() / kRho0, 0.5f, 1.3f);
+	const float ks[2] {_param_vt_rd_ks_r.get(), _param_vt_rd_ks_p.get()};
+	const float bu[2] {_param_vt_rd_bu_r.get(), _param_vt_rd_bu_p.get()};
+
+	float rotor_add[2] {};
+	bool excess = false;
+
+	for (int axis = 0; axis < 2; axis++) {
+		if (ks[axis] < FLT_EPSILON || bu[axis] < FLT_EPSILON) {
+			continue;
+		}
+
+		// rotor torque units per surface torque unit
+		const float ratio = (ks[axis] * q_dyn) / (bu[axis] * rho_ratio);
+		const float surface_left = _ca_status[1].unallocated_torque[axis];
+		const float rotor_left = _ca_status[0].unallocated_torque[axis];
+
+		if (fabsf(surface_left) > 0.02f && PX4_ISFINITE(surface_left)) {
+			// surfaces saturated -> lift rotors
+			rotor_add[axis] = surface_left * ratio;
+			excess = true;
+
+		} else if (fabsf(rotor_left) > 0.01f && PX4_ISFINITE(rotor_left) && ratio > 0.05f
+			   && _vtol_mode != vtol_mode::FW_MODE) {
+			// lift rotors saturated (transition) -> surfaces, within their remaining range
+			const float s = _torque_setpoint_1->xyz[axis];
+			_torque_setpoint_1->xyz[axis] = math::constrain(s + rotor_left / ratio, math::min(s, -1.f), math::max(s, 1.f));
+		}
+	}
+
+	const bool was_holding = _rd_last_excess > 0 && (now - _rd_last_excess) < (hrt_abstime)(_param_vt_rd_hold.get() * 1e6f);
+
+	if (excess) {
+		if (!was_holding) {
+			PX4_INFO("torque redistribution: surfaces saturated (roll %.2f pitch %.2f), lift rotors on",
+				 (double)_ca_status[1].unallocated_torque[0], (double)_ca_status[1].unallocated_torque[1]);
+		}
+
+		_rd_last_excess = now;
+	}
+
+	// Keep the rotors ready while the attitude is upset (tilt > 45 deg), whether or not the surfaces are saturated now
+	const matrix::Quatf q_att(_v_att->q);
+	const float cos_tilt = 1.f - 2.f * (q_att(1) * q_att(1) + q_att(2) * q_att(2));
+	const bool upset = q_att.isAllFinite() && cos_tilt < 0.7071f;
+
+	if (upset) {
+		_rd_last_excess = now;
+	}
+
+	const bool hold = _rd_last_excess > 0 && (now - _rd_last_excess) < (hrt_abstime)(_param_vt_rd_hold.get() * 1e6f);
+
+	// Collective the differential needs: one side of the rotors goes up by the torque, the other down by as much,
+	// which only works above that collective (no air mode on the lift rotors).
+	float tq[2];
+
+	for (int axis = 0; axis < 2; axis++) {
+		tq[axis] = math::constrain(_torque_setpoint_0->xyz[axis] + rotor_add[axis], -1.f, 1.f);
+	}
+
+	const float need = _param_vt_rd_coll.get() * math::max(fabsf(tq[0]), fabsf(tq[1]));
+	// upset: a standing collective so that the differential is there the moment the torque is asked for
+	const float standby = upset ? 0.4f * _param_vt_rd_cmax.get() : 0.f;
+	const float target = hold ? math::constrain(math::max(need, standby), 0.f, _param_vt_rd_cmax.get()) : 0.f;
+	const float slew_up = _param_vt_rd_slew.get();
+	const float slew_down = 0.2f * slew_up;
+
+	if (target > _rd_collective) {
+		_rd_collective = (slew_up > FLT_EPSILON) ? math::min(target, _rd_collective + slew_up * dt) : target;
+
+	} else {
+		// keep the collective while holding (the torque changes sign during the recovery), then wind down slowly
+		_rd_collective = hold ? _rd_collective : math::max(target, _rd_collective - slew_down * dt);
+	}
+
+	if (excess || _rd_collective > 0.f) {
+		_torque_setpoint_0->xyz[0] = tq[0];
+		_torque_setpoint_0->xyz[1] = tq[1];
+		_thrust_setpoint_0->xyz[2] = math::min(_thrust_setpoint_0->xyz[2], -_rd_collective);
+	}
 }
 
 void

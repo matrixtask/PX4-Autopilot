@@ -48,6 +48,8 @@
 #include "vtol_type.h"
 #include <uORB/Subscription.hpp>
 #include <uORB/topics/vtol_brake_setpoint.h>
+#include <uORB/SubscriptionMultiArray.hpp>
+#include <uORB/topics/control_allocator_status.h>
 
 class Standard : public VtolType
 {
@@ -113,6 +115,18 @@ private:
 
 	void parameters_update() override;
 
+	// Torque redistribution between the two actuator groups (VT_RD_EN). Each group's torque setpoint is normalised to
+	// its own authority: surfaces to KS q (dynamic pressure from CAS), lift rotors to BU (rho / rho0). A torque one
+	// group cannot give (unallocated, from the control allocator) is converted through that ratio and added to the
+	// other group, so the total moment follows the demand until both are saturated. In fixed-wing flight the lift
+	// rotors are spun up to the collective the differential needs and kept for VT_RD_HOLD after the last excess.
+	void redistributeTorque();
+	uORB::SubscriptionMultiArray<control_allocator_status_s, 2> _ca_status_subs{ORB_ID::control_allocator_status};
+	control_allocator_status_s _ca_status[2] {};
+	float _rd_collective{0.f};	///< lift-rotor up-thrust for the redistributed differential [0, 1]
+	hrt_abstime _rd_last_excess{0};
+	hrt_abstime _rd_time{0};
+
 	DEFINE_PARAMETERS_CUSTOM_PARENT(VtolType,
 					(ParamFloat<px4::params::VT_PSHER_SLEW>) _param_vt_psher_slew,
 					(ParamFloat<px4::params::VT_B_TRANS_RAMP>) _param_vt_b_trans_ramp,
@@ -128,7 +142,17 @@ private:
 					(ParamFloat<px4::params::VT_FW_MC_THR>) _param_vt_fw_mc_thr,
 					(ParamBool<px4::params::VT_BFF_EN>) _param_vt_bff_en,
 					(ParamFloat<px4::params::VT_BFF_VEXIT>) _param_vt_bff_vexit,
-					(ParamFloat<px4::params::FW_PSP_OFF>) _param_fw_psp_off
+					(ParamFloat<px4::params::FW_PSP_OFF>) _param_fw_psp_off,
+					(ParamBool<px4::params::VT_RD_EN>) _param_vt_rd_en,
+					(ParamFloat<px4::params::VT_RD_KS_R>) _param_vt_rd_ks_r,
+					(ParamFloat<px4::params::VT_RD_KS_P>) _param_vt_rd_ks_p,
+					(ParamFloat<px4::params::VT_RD_BU_R>) _param_vt_rd_bu_r,
+					(ParamFloat<px4::params::VT_RD_BU_P>) _param_vt_rd_bu_p,
+					(ParamFloat<px4::params::VT_RD_COLL>) _param_vt_rd_coll,
+					(ParamFloat<px4::params::VT_RD_CMAX>) _param_vt_rd_cmax,
+					(ParamFloat<px4::params::VT_RD_HOLD>) _param_vt_rd_hold,
+					(ParamFloat<px4::params::VT_RD_SLEW>) _param_vt_rd_slew,
+					(ParamFloat<px4::params::VT_RD_VMIN>) _param_vt_rd_vmin
 				       )
 };
 #endif

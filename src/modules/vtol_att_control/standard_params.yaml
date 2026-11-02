@@ -213,3 +213,103 @@ parameters:
       max: 0.9
       increment: 0.02
       decimal: 2
+    VT_RD_EN:
+      description:
+        short: Torque redistribution between control surfaces and lift rotors
+        long: |-
+          Above VT_RD_VMIN, in transitions and fixed-wing flight: roll and pitch torque the control surfaces
+          cannot give (unallocated) is converted with the authority ratio KS q / (BU rho/rho0) and added to the
+          lift rotors; in transitions, torque the lift rotors cannot give goes to the surfaces. In fixed-wing
+          flight the lift rotors are spun up to the collective the differential needs (VT_RD_COLL, VT_RD_CMAX)
+          and kept for VT_RD_HOLD after the last excess. Use with FW_TQ_LIM > 1 so that the rate controller
+          can ask for more than the surfaces give.
+      type: boolean
+      default: 0
+    VT_RD_KS_R:
+      description:
+        short: Surface roll moment per dynamic pressure at full roll torque [m^3]
+      type: float
+      default: 0.0
+      min: 0.0
+      max: 100.0
+      decimal: 3
+      increment: 0.01
+    VT_RD_KS_P:
+      description:
+        short: Surface pitch moment per dynamic pressure at full pitch torque [m^3]
+      type: float
+      default: 0.0
+      min: 0.0
+      max: 100.0
+      decimal: 3
+      increment: 0.01
+    VT_RD_BU_R:
+      description:
+        short: Lift-rotor roll moment at full roll torque setpoint (sea-level density)
+      type: float
+      default: 0.0
+      unit: Nm
+      min: 0.0
+      max: 200000.0
+      decimal: 0
+      increment: 100
+    VT_RD_BU_P:
+      description:
+        short: Lift-rotor pitch moment at full pitch torque setpoint (sea-level density)
+      type: float
+      default: 0.0
+      unit: Nm
+      min: 0.0
+      max: 200000.0
+      decimal: 0
+      increment: 100
+    VT_RD_COLL:
+      description:
+        short: Lift-rotor collective per unit redistributed torque
+        long: The differential needs a collective of about the torque setpoint on each side.
+      type: float
+      default: 1.0
+      min: 0.0
+      max: 2.0
+      decimal: 2
+      increment: 0.05
+    VT_RD_CMAX:
+      description:
+        short: Maximum lift-rotor collective for the redistribution
+      type: float
+      default: 0.5
+      min: 0.0
+      max: 1.0
+      decimal: 2
+      increment: 0.05
+    VT_RD_HOLD:
+      description:
+        short: Lift-rotor hold time after the last surface saturation
+      type: float
+      default: 3.0
+      unit: s
+      min: 0.0
+      max: 30.0
+      decimal: 1
+      increment: 0.5
+    VT_RD_SLEW:
+      description:
+        short: Lift-rotor collective rise rate for the redistribution
+        long: Fall rate is a fifth of it.
+      type: float
+      default: 4.0
+      unit: 1/s
+      min: 0.0
+      max: 20.0
+      decimal: 1
+      increment: 0.5
+    VT_RD_VMIN:
+      description:
+        short: Minimum calibrated airspeed for the redistribution
+      type: float
+      default: 20.0
+      unit: m/s
+      min: 0.0
+      max: 60.0
+      decimal: 0
+      increment: 1

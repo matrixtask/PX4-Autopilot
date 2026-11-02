@@ -515,3 +515,34 @@ param set-default MPC_LAND_FLR_H 0.3
 param set-default MPC_LAND_FLR_V 0.1
 param set-default MPC_LAND_DEC 1.2
 param set-default MPC_LAND_JERK 1.0
+
+# --- Disturbance tolerance (2026-11-03): wake-vortex / gust upsets ---------------------------------------------------
+# SITL HQ01 wake tests: a Gamma 150 m^2/s jet-wake core gives 25 kN m of roll for 1.5 s; full aileron gives 4.8 kN m at
+# 72 m/s (tools/b_identify.py: 1.56 m^3 x q), the lift rotors 38.8 kN m. With FW_R_RMAX 15 the aircraft was lost.
+# Upset recovery: wings level by the shortest way at up to 90 deg/s, idle thrust nose-low, pull-out at 2.5 g.
+param set-default FW_UPS_EN 1
+param set-default FW_UPS_RMAX 90
+param set-default FW_UPS_TILT 60
+param set-default FW_UPS_EXIT 20
+param set-default FW_UPS_NZ 2.5
+param set-default FW_UPS_THR 0.0
+# Torque redistribution surfaces <-> lift rotors (VT_RD_*): authority from the virtual wind tunnel of this model
+# (docs/b_matrix/b_matrix.json in mk7_mission): KS = surface moment / q at full torque setpoint [m^3],
+# BU = lift-rotor moment at full torque setpoint around collective 0.3 [N m].
+param set-default FW_TQ_LIM 8.0  # rotor/surface roll authority ratio at 72 m/s: 38.8 / 4.8 kN m
+param set-default VT_RD_EN 1
+param set-default VT_RD_KS_R 1.558
+param set-default VT_RD_KS_P 21.04
+param set-default VT_RD_BU_R 38769
+param set-default VT_RD_BU_P 38769
+param set-default VT_RD_COLL 1.0
+param set-default VT_RD_CMAX 0.5
+param set-default VT_RD_HOLD 3.0
+param set-default VT_RD_SLEW 4.0
+param set-default VT_RD_VMIN 20
+# INDI (off by default; FW_INDI_EN 1 to use): G = KS / I (Ixx 8946, Iyy 6576 kg m^2 from the model links)
+param set-default FW_INDI_G_R 0.000174
+param set-default FW_INDI_G_P 0.0032
+param set-default FW_INDI_K_R 4.0
+param set-default FW_INDI_K_P 4.0
+param set-default FW_INDI_TACT 0.1
