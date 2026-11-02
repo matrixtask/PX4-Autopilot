@@ -209,12 +209,19 @@ bool FixedwingAttitudeControl::updateUpsetRecovery(const Quatf &q_current)
 	const float gain[2] {_param_fw_indi_g_r.get(), _param_fw_indi_g_p.get()};
 	float dist_max = 0.f;
 
-	if (angular_accel.isAllFinite() && PX4_ISFINITE(torque.xyz[0]) && PX4_ISFINITE(torque.xyz[1]) && q_dyn > 100.f && dt > 0.f) {
+	// Only in fixed-wing flight: in a transition the lift rotors make moments of their own that the surface torque does
+	// not contain. The torque setpoint is taken unclamped: beyond the surfaces (FW_TQ_LIM > 1) a VTOL hands the rest
+	// to the lift rotors (VT_RD_EN), and that moment is explained too.
+	const bool fixed_wing = _vehicle_status.vehicle_type == vehicle_status_s::VEHICLE_TYPE_FIXED_WING
+				&& !_vehicle_status.in_transition_mode;
+
+	if (fixed_wing && angular_accel.isAllFinite() && PX4_ISFINITE(torque.xyz[0]) && PX4_ISFINITE(torque.xyz[1])
+	    && q_dyn > 100.f && dt > 0.f) {
 		const float tact = math::max(_param_fw_indi_tact.get(), 0.f);
 		static constexpr float kHighPassTau = 1.f;
 
 		for (int i = 0; i < 2; i++) {
-			const float u = math::constrain(torque.xyz[i], -1.f, 1.f);
+			const float u = torque.xyz[i];
 			const float g = gain[i] * q_dyn;
 
 			if (!_ups_filters_valid) {
