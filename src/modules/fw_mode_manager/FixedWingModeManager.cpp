@@ -746,8 +746,16 @@ FixedWingModeManager::handle_setpoint_type(const position_setpoint_s &pos_sp_cur
 			&& pos_sp_curr.type == position_setpoint_s::SETPOINT_TYPE_POSITION && _position_setpoint_current_valid
 			&& pos_sp_next.type == position_setpoint_s::SETPOINT_TYPE_LAND && _position_setpoint_next_valid;
 
+	// Glide path (FW_WP_GLIDE): the next leg continues the climb or descent the vehicle is still behind on, so the
+	// remaining altitude error is flown off along it. Circling at the waypoint to reach its altitude first (below) put
+	// the vehicle into a 26 deg bank, 270 m off track at the steep arrival-zone legs (HQ01 v8/v9: 33 m high).
+	const bool glide_continues = _param_fw_wp_glide.get() && _position_setpoint_next_valid
+				     && pos_sp_next.type == position_setpoint_s::SETPOINT_TYPE_POSITION
+				     && ((pos_sp_next.alt - pos_sp_curr.alt) * (pos_sp_curr.alt - _current_altitude) > 0.f);
+
 	// check if we should switch to loiter but only if we are not expecting a backtransition to happen
-	if (pos_sp_curr.type == position_setpoint_s::SETPOINT_TYPE_POSITION && !approaching_vtol_backtransition) {
+	if (pos_sp_curr.type == position_setpoint_s::SETPOINT_TYPE_POSITION && !approaching_vtol_backtransition
+	    && !glide_continues) {
 
 		float dist_xy = -1.f;
 		float dist_z = -1.f;
