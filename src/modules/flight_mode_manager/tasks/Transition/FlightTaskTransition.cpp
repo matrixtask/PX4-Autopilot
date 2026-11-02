@@ -330,6 +330,21 @@ Vector2f FlightTaskTransition::computeBackTransitionLateralAccel() const
 	return accel;
 }
 
+float FlightTaskTransition::taperDistance(float v_from, float v_exit, float a_mc, float jerk)
+{
+	// distance travelled while braking on decel = sqrt(a_mc^2 + 2 jerk (v - v_exit)) from v_from to v_exit
+	static constexpr int kSteps = 20;
+	const float dv = (v_from - v_exit) / kSteps;
+	float distance = 0.f;
+
+	for (int i = 0; i < kSteps; i++) {
+		const float v = v_exit + (i + 0.5f) * dv;
+		distance += v * dv / sqrtf(a_mc * a_mc + 2.f * jerk * (v - v_exit));
+	}
+
+	return math::max(distance, 0.f);
+}
+
 float FlightTaskTransition::computeBackTransitionDecelSetpoint() const
 {
 	// Deceleration that stops the vehicle at the back-transition end point: closing speed^2 / (2 distance).
@@ -344,23 +359,33 @@ float FlightTaskTransition::computeBackTransitionDecelSetpoint() const
 		const float dist_to_target = pos_to_target.norm();
 		const float closing_speed = dist_to_target > FLT_EPSILON ? velocity_xy.dot(pos_to_target / dist_to_target) : 0.f;
 
-		// The multicopter takes over at VT_BFF_VEXIT and needs its own stopping distance from there (MPC_ACC_HOR,
-		// MPC_JERK_AUTO): brake to VT_BFF_VEXIT that far before the point. Braking to zero at the point handed
-		// over at 3 m/s already 3 m past the pad; the MC trajectory saturated (18 deg pitch) and overshot 12 m (HQ01 v15).
-		float tail = 0.f;
+		// Braking plan: constant deceleration down to v1, then the stopping taper (computeBackTransitionBrake:
+		// decel <= sqrt(a_mc^2 + 2 j (v - vexit))) down to VT_BFF_VEXIT, then the multicopter's own stopping
+		// distance (MPC_ACC_HOR, MPC_JERK_AUTO). Planning only "v^2 / (2 d)" let the taper hand over at 3 m/s at the pad
+		// and the MC trajectory saturated (18 deg pitch), overshot 12 m and oscillated (HQ01 v15/v16).
+		const float a_mc = _param_mpc_acc_hor;
+		const float jerk = _param_mpc_jerk_auto;
+		const float v_exit = _param_vt_bff_vexit;
+		const float a_cap = kBrakeDecelCap * _param_vt_b_dec_mss;
+		const bool planned = v_exit > FLT_EPSILON && a_mc > FLT_EPSILON && jerk > FLT_EPSILON && a_cap > a_mc;
 
-		if (_param_vt_bff_vexit > FLT_EPSILON && _param_mpc_acc_hor > FLT_EPSILON && _param_mpc_jerk_auto > FLT_EPSILON) {
-			tail = _param_vt_bff_vexit * _param_vt_bff_vexit / (2.f * _param_mpc_acc_hor)
-			       + _param_vt_bff_vexit * _param_mpc_acc_hor / _param_mpc_jerk_auto;
-		}
+		if (planned && closing_speed > FLT_EPSILON) {
+			const float mc_tail = v_exit * v_exit / (2.f * a_mc) + v_exit * a_mc / jerk;
+			const float v1 = v_exit + (a_cap * a_cap - a_mc * a_mc) / (2.f * jerk);
 
-		const float v_end = math::min(_param_vt_bff_vexit, closing_speed);
+			if (closing_speed > v1) {
+				const float remaining = dist_to_target - mc_tail - taperDistance(v1, v_exit, a_mc, jerk);
+				deceleration_setpoint = (remaining > 1.f) ? (closing_speed * closing_speed - v1 * v1) / (2.f * remaining) : a_cap;
 
-		if (dist_to_target > tail + 1.f && closing_speed > FLT_EPSILON) {
-			// Backtransition target point is ahead of the vehicle, compute the desired deceleration
-			deceleration_setpoint = (closing_speed * closing_speed - v_end * v_end) / (2.f * (dist_to_target - tail));
+			} else {
+				// on the taper: its own deceleration, more if the point comes earlier than planned
+				const float remaining = math::max(dist_to_target - mc_tail, 0.1f);
+				const float on_plan = sqrtf(a_mc * a_mc + 2.f * jerk * math::max(closing_speed - v_exit, 0.f));
+				deceleration_setpoint = on_plan * math::max(taperDistance(closing_speed, v_exit, a_mc, jerk) / remaining, 1.f);
+			}
 
 		} else if (dist_to_target > FLT_EPSILON && closing_speed > FLT_EPSILON) {
+			// Backtransition target point is ahead of the vehicle, compute the desired deceleration
 			deceleration_setpoint = closing_speed * closing_speed / (2.f * dist_to_target);
 
 		} else {

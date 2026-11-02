@@ -128,6 +128,7 @@ private:
 
 	float computeBackTransitionTiltSetpoint();
 	float computeBackTransitionDecelSetpoint() const;
+	static float taperDistance(float v_from, float v_exit, float a_mc, float jerk);
 	bool backTransitionTarget(matrix::Vector2f &pos_to_target) const;
 	matrix::Vector2f computeBackTransitionLateralAccel() const;
 	float computeBackTransitionBrake();
