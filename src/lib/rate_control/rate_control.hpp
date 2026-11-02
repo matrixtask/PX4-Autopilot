@@ -115,6 +115,18 @@ public:
 	}
 
 	/**
+	 * Set the integral term of one axis (bumpless hand-over from another controller), within the integrator limit
+	 * @param axis roll 0 / pitch 1 / yaw 2
+	 * @param value integral term [same unit as the controller output]
+	 */
+	void setIntegral(size_t axis, float value)
+	{
+		if (axis < 3 && PX4_ISFINITE(value)) {
+			_rate_int(axis) = math::constrain(value, -_lim_int(axis), _lim_int(axis));
+		}
+	}
+
+	/**
 	 * Get status message of controller for logging/debugging
 	 * @param rate_ctrl_status status message to fill with internal states
 	 */

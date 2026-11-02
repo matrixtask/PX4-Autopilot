@@ -75,6 +75,8 @@ FixedwingAttitudeControl::init()
 void
 FixedwingAttitudeControl::parameters_update()
 {
+	updateVtolRedistributionParams();
+
 	_proportional_gain = matrix::Vector3f(1.0f / math::max(0.01f, _param_fw_r_tc.get()),
 					      1.0f / math::max(0.01f, _param_fw_p_tc.get()),
 					      1.0f);
@@ -173,15 +175,24 @@ float FixedwingAttitudeControl::get_airspeed_constrained()
 bool FixedwingAttitudeControl::updateUpsetRecovery(const Quatf &q_current)
 {
 	const hrt_abstime now = hrt_absolute_time();
-	const float dt = (_upset_time > 0) ? math::constrain((now - _upset_time) * 1e-6f, 0.f, 0.1f) : 0.f;
+	// Not called for a while (manual/acro, multicopter, landed): start over, no state carried across the gap
+	const bool gap = _upset_time == 0 || (now - _upset_time) > 50_ms;
+	const float dt = gap ? 0.f : (now - _upset_time) * 1e-6f;
 	_upset_time = now;
 
 	upset_recovery_status_s status{};
 
-	if (!_param_fw_ups_en.get() || _landed || !_in_fw_or_transition_wo_tailsitter_transition) {
+	if (gap || !_param_fw_ups_en.get() || _landed || !_in_fw_or_transition_wo_tailsitter_transition
+	    || _vehicle_status.is_vtol_tailsitter) {
+		if (_upset) {
+			PX4_INFO("upset recovery stopped (mode change)");
+		}
+
 		_upset = false;
 		_ups_rate_time = _ups_dist_time = _ups_calm_time = 0.f;
 		_ups_filters_valid = false;
+		status.timestamp = now;
+		_upset_status_pub.publish(status);
 		return false;
 	}
 
@@ -204,8 +215,15 @@ bool FixedwingAttitudeControl::updateUpsetRecovery(const Quatf &q_current)
 	// through the actuator lag (FW_INDI_TACT) to line up with the measured angular acceleration.
 	vehicle_torque_setpoint_s torque{};
 	_torque_sp_sub.copy(&torque);
-	const float cas = _airspeed_validated_sub.get().calibrated_airspeed_m_s;
-	const float q_dyn = PX4_ISFINITE(cas) ? 0.5f * 1.225f * cas * cas : 0.f;
+
+	for (int i = 0; i < 2; i++) {
+		_ca_status_subs[i].update(&_ca_status[i]);
+	}
+
+	const airspeed_validated_s &airspeed = _airspeed_validated_sub.get();
+	const bool airspeed_valid = PX4_ISFINITE(airspeed.calibrated_airspeed_m_s) && hrt_elapsed_time(&airspeed.timestamp) < 1_s;
+	const float cas = airspeed_valid ? airspeed.calibrated_airspeed_m_s : NAN;
+	const float q_dyn = airspeed_valid ? 0.5f * 1.225f * cas * cas : 0.f;
 	const float gain[2] {_param_fw_indi_g_r.get(), _param_fw_indi_g_p.get()};
 	float dist_max = 0.f;
 
@@ -221,7 +239,8 @@ bool FixedwingAttitudeControl::updateUpsetRecovery(const Quatf &q_current)
 		static constexpr float kHighPassTau = 1.f;
 
 		for (int i = 0; i < 2; i++) {
-			const float u = torque.xyz[i];
+			// torque actually produced: what the surfaces gave plus what the lift rotors gave of the rest (VT_RD_EN)
+			const float u = achievedTorque(i, torque.xyz[i], q_dyn);
 			const float g = gain[i] * q_dyn;
 
 			if (!_ups_filters_valid) {
@@ -274,9 +293,12 @@ bool FixedwingAttitudeControl::updateUpsetRecovery(const Quatf &q_current)
 
 	} else if (_upset) {
 		// Calm: level, nose up, rates and disturbance well below their triggers, for a second
+		// (a disabled trigger does not hold the recovery)
+		const bool rates_calm = rate_trigger < FLT_EPSILON || !rates.isAllFinite()
+					|| (fabsf(rates(0)) < 0.5f * rate_trigger && fabsf(rates(1)) < 0.5f * rate_trigger);
+		const bool dist_calm = dist_trigger < FLT_EPSILON || dist_max < 0.5f * dist_trigger;
 		const bool calm = tilt < radians(_param_fw_ups_exit.get()) && euler.theta() > -radians(_param_fw_ups_p_dn.get())
-				  && (!rates.isAllFinite() || (fabsf(rates(0)) < 0.5f * rate_trigger && fabsf(rates(1)) < 0.5f * rate_trigger))
-				  && dist_max < 0.5f * math::max(dist_trigger, FLT_EPSILON);
+				  && rates_calm && dist_calm;
 		_ups_calm_time = calm ? _ups_calm_time + dt : 0.f;
 
 		if (_ups_calm_time > 1.f) {
@@ -296,14 +318,68 @@ bool FixedwingAttitudeControl::updateUpsetRecovery(const Quatf &q_current)
 	return _upset;
 }
 
+float FixedwingAttitudeControl::achievedTorque(int axis, float setpoint, float q_dyn)
+{
+	const float surface_left = _ca_status[1].unallocated_torque[axis];
+
+	if (!PX4_ISFINITE(surface_left)) {
+		return math::constrain(setpoint, -1.f, 1.f);
+	}
+
+	float u = math::constrain(setpoint - surface_left, -1.f, 1.f);
+
+	if (_vt_rd.en && _vt_rd.ks[axis] > FLT_EPSILON && _vt_rd.bu[axis] > FLT_EPSILON && q_dyn > 1.f) {
+		const float ratio = _vt_rd.ks[axis] * q_dyn / _vt_rd.bu[axis];
+		const float rotor_left = _ca_status[0].unallocated_torque[axis];
+		const float missing = PX4_ISFINITE(rotor_left) ? rotor_left / ratio : 0.f;
+		u += (surface_left > 0.f) ? math::constrain(surface_left - missing, 0.f, surface_left)
+		     : math::constrain(surface_left - missing, surface_left, 0.f);
+	}
+
+	return u;
+}
+
+void FixedwingAttitudeControl::updateVtolRedistributionParams()
+{
+	const char *names[5] {"VT_RD_EN", "VT_RD_KS_R", "VT_RD_KS_P", "VT_RD_BU_R", "VT_RD_BU_P"};
+	float values[5] {};
+
+	for (int i = 0; i < 5; i++) {
+		const param_t h = param_find(names[i]);
+
+		if (h == PARAM_INVALID) {
+			_vt_rd.en = false;
+			return;
+		}
+
+		if (i == 0) {
+			int32_t v = 0;
+			param_get(h, &v);
+			values[i] = (float)v;
+
+		} else {
+			param_get(h, &values[i]);
+		}
+	}
+
+	_vt_rd.en = values[0] > 0.5f;
+	_vt_rd.ks[0] = values[1];
+	_vt_rd.ks[1] = values[2];
+	_vt_rd.bu[0] = values[3];
+	_vt_rd.bu[1] = values[4];
+}
+
 Quatf FixedwingAttitudeControl::upsetAttitudeSetpoint(const Quatf &q_current) const
 {
 	// 1. Roll to wings level by the shortest way, holding the current pitch: pulling while the lift vector
 	//    points at the ground only steepens the dive.
-	// 2. Once the lift vector is above the horizon (|roll| < 90 deg), pull the nose up to the horizon;
-	//    the load factor limit is applied on the pitch rate.
+	// 2. Once the lift vector is above the horizon (|roll| < 90 deg), bring the nose to the horizon: up from a dive
+	//    (the load factor limit is applied on the pitch rate), down from a nose-high upset so that the speed is not
+	//    lost (a held nose-high attitude decays into a stall).
 	const Eulerf euler(q_current);
-	const float pitch_sp = (fabsf(euler.phi()) > M_PI_2_F) ? euler.theta() : math::max(euler.theta(), 0.f);
+	static constexpr float kPitchRecovered = math::radians(3.f);
+	const float pitch_sp = (fabsf(euler.phi()) > M_PI_2_F) ? euler.theta()
+			       : math::constrain(euler.theta(), 0.f, kPitchRecovered);
 	return Quatf(Eulerf(0.f, pitch_sp, euler.psi()));
 }
 
@@ -472,7 +548,8 @@ void FixedwingAttitudeControl::Run()
 						roll_rate_max = math::max(roll_rate_max, radians(_param_fw_ups_rmax.get()));
 						// pull-out: the pitch rate that keeps the load factor at FW_UPS_NZ (q = (n - 1) g / V), with the
 						// measured airspeed (a dive overspeeds past FW_AIRSPD_MAX, where V above is clipped)
-						const float cas = _airspeed_validated_sub.get().calibrated_airspeed_m_s;
+						const airspeed_validated_s &as = _airspeed_validated_sub.get();
+						const float cas = (hrt_elapsed_time(&as.timestamp) < 1_s) ? as.calibrated_airspeed_m_s : NAN;
 						const float v_pull = PX4_ISFINITE(cas) ? math::max(V, cas) : V;
 						pitch_rate_max_pos = math::min(pitch_rate_max_pos,
 									       (_param_fw_ups_nz.get() - 1.f) * CONSTANTS_ONE_G / v_pull);
@@ -522,7 +599,10 @@ void FixedwingAttitudeControl::Run()
 						const Eulerf euler_now(q_current);
 
 						if (euler_now.theta() < -radians(_param_fw_ups_p_dn.get()) || fabsf(euler_now.phi()) > M_PI_2_F) {
-							_rates_sp.thrust_body[0] = math::min(_rates_sp.thrust_body[0], _param_fw_ups_thr.get());
+							_rates_sp.thrust_body[0] = math::min(_att_sp.thrust_body[0], _param_fw_ups_thr.get());
+
+						} else {
+							_rates_sp.thrust_body[0] = _att_sp.thrust_body[0];
 						}
 					}
 

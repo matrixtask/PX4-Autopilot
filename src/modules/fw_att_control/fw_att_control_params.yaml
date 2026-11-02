@@ -266,7 +266,7 @@ parameters:
           Roll or pitch rate that starts the recovery when it lasts FW_UPS_RT_T. Must be well above the rates of normal
           manoeuvres (FW_R_RMAX, FW_P_RMAX_*). 0 disables the rate trigger.
       type: float
-      default: 40.0
+      default: 90.0
       unit: deg/s
       min: 0.0
       max: 180.0

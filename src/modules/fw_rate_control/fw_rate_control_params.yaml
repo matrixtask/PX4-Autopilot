@@ -416,7 +416,8 @@ parameters:
       description:
         short: Incremental nonlinear dynamic inversion on roll and pitch
         long: |-
-          Replaces the roll and pitch rate PID in fixed-wing flight and transitions above FW_AIRSPD_STALL:
+          Replaces the roll and pitch rate PID in fixed-wing flight (not in transitions, not on tailsitters) above
+          FW_AIRSPD_STALL with a valid measured airspeed (FW_USE_AIRSPD); the PID takes over bumplessly otherwise:
           u = u0 + (K (rate_sp - rate) - angular_acceleration) / (G q), with u0 the torque the surfaces
           produced (delayed like the measured angular acceleration) and q the dynamic pressure from the
           calibrated airspeed. Disturbances (gusts, wake vortices) are cancelled through the measured angular

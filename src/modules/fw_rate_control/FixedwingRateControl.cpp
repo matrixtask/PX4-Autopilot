@@ -192,13 +192,25 @@ Vector3f FixedwingRateControl::updateIndi(const Vector3f &rates, const Vector3f 
 
 	const Vector3f gain(_param_fw_indi_g_r.get(), _param_fw_indi_g_p.get(), 0.f);
 	const Vector3f k(_param_fw_indi_k_r.get(), _param_fw_indi_k_p.get(), 0.f);
-	const float q_dyn = 0.5f * atmosphere::kAirDensitySeaLevelStandardAtmos * airspeed * airspeed;
+
+	// The effectiveness scales with the measured dynamic pressure: without a valid airspeed there is no INDI (the
+	// trim-airspeed fallback would put the loop gain off by (V / V_trim)^2)
+	const airspeed_validated_s &as = _airspeed_validated_sub.get();
+	const bool airspeed_valid = _param_fw_use_airspd.get() && PX4_ISFINITE(as.calibrated_airspeed_m_s)
+				    && hrt_elapsed_time(&as.timestamp) < 1_s;
+	const float cas = airspeed_valid ? as.calibrated_airspeed_m_s : 0.f;
+	const float q_dyn = 0.5f * atmosphere::kAirDensitySeaLevelStandardAtmos * cas * cas;
+
+	vehicle_air_data_s air_data{};
+
+	if (_vehicle_air_data_sub.update(&air_data) && PX4_ISFINITE(air_data.rho)) {
+		_rho_ratio = math::constrain(air_data.rho / atmosphere::kAirDensitySeaLevelStandardAtmos, 0.5f, 1.3f);
+	}
 
 	// Torque produced last cycle, in surface units: the setpoint minus what the surfaces could not give, plus what a VTOL
 	// handed on to the lift rotors (VT_RD_EN) and they did give. Counting the rotor part keeps the increment consistent
 	// when the surfaces are saturated and the rotors carry the rest.
 	const Vector3f u_prev(_vehicle_torque_setpoint.xyz);
-	const float q_dyn_ach = 0.5f * atmosphere::kAirDensitySeaLevelStandardAtmos * airspeed * airspeed;
 	const float *ks = _vt_rd.ks;
 	const float *bu = _vt_rd.bu;
 	Vector3f u_achieved = u_prev - _surface_unallocated;
@@ -206,9 +218,9 @@ Vector3f FixedwingRateControl::updateIndi(const Vector3f &rates, const Vector3f 
 	for (int i = 0; i < 3; i++) {
 		u_achieved(i) = math::constrain(u_achieved(i), -1.f, 1.f);
 
-		if (i < 2 && _vt_rd.en && ks[i] > FLT_EPSILON && bu[i] > FLT_EPSILON && q_dyn_ach > 1.f
+		if (i < 2 && _vt_rd.en && ks[i] > FLT_EPSILON && bu[i] > FLT_EPSILON && q_dyn > 1.f
 		    && PX4_ISFINITE(_surface_unallocated(i))) {
-			const float ratio = ks[i] * q_dyn_ach / bu[i]; // rotor units per surface unit
+			const float ratio = ks[i] * q_dyn / (bu[i] * _rho_ratio); // rotor units per surface unit (as vtol_att_control)
 			const float rotor_missing = PX4_ISFINITE(_rotor_unallocated(i)) ? _rotor_unallocated(i) / ratio : 0.f;
 			// part of the surface excess the rotors delivered (same sign as the excess, at most the excess)
 			const float handed = _surface_unallocated(i);
@@ -218,9 +230,14 @@ Vector3f FixedwingRateControl::updateIndi(const Vector3f &rates, const Vector3f 
 		}
 	}
 
-	const bool enabled = _param_fw_indi_en.get() && _in_fw_or_transition_wo_tailsitter_transition && !_landed
-			     && _vcontrol_mode.flag_control_attitude_enabled && PX4_ISFINITE(airspeed)
-			     && airspeed > _param_fw_airspd_stall.get() && angular_accel.isAllFinite() && u_achieved.isAllFinite();
+	// Fixed-wing flight only: in a transition the lift rotors make moments of their own, and a VTOL control allocator
+	// gets surface torque from vtol_att_control that this module did not command. Not on tailsitters (hover-frame
+	// interfaces).
+	const bool fixed_wing = _vehicle_status.vehicle_type == vehicle_status_s::VEHICLE_TYPE_FIXED_WING
+				&& !_vehicle_status.in_transition_mode && !_vehicle_status.is_vtol_tailsitter;
+	const bool enabled = _param_fw_indi_en.get() && fixed_wing && !_landed && _vcontrol_mode.flag_control_attitude_enabled
+			     && airspeed_valid && cas > _param_fw_airspd_stall.get() && angular_accel.isAllFinite()
+			     && u_achieved.isAllFinite();
 
 	if (!enabled) {
 		_indi_u_act = u_achieved;
@@ -524,7 +541,19 @@ void FixedwingRateControl::Run()
 					if (indi_axes(i) > 0.5f) {
 						control_u(i) = control_indi(i) - trim(i);
 						_rate_control.resetIntegral(i);
+						_indi_last_u(i) = control_u(i);
+
+					} else if (_indi_was_active(i) > 0.5f) {
+						// INDI -> PID: the integrator takes over the torque INDI was giving (beyond the trim), so the
+						// hand-over at the stall speed or into a transition is bumpless
+						const float scale = _airspeed_scaling * _airspeed_scaling * _gain_compression.getGains()(i);
+
+						if (scale > FLT_EPSILON) {
+							_rate_control.setIntegral(i, _indi_last_u(i) / scale);
+						}
 					}
+
+					_indi_was_active(i) = indi_axes(i);
 				}
 
 				// Special case yaw in Acro: if the parameter FW_ACRO_YAW_EN is not set then don't rate-control yaw

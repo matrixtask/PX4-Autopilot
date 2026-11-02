@@ -65,6 +65,8 @@
 #include <uORB/topics/vehicle_status.h>
 #include <uORB/topics/vehicle_torque_setpoint.h>
 #include <uORB/topics/upset_recovery_status.h>
+#include <uORB/topics/control_allocator_status.h>
+#include <uORB/SubscriptionMultiArray.hpp>
 
 using matrix::AxisAnglef;
 using matrix::Eulerf;
@@ -196,6 +198,18 @@ private:
 		(ParamFloat<px4::params::FW_INDI_G_P>) _param_fw_indi_g_p,
 		(ParamFloat<px4::params::FW_INDI_TACT>) _param_fw_indi_tact
 	)
+
+	// VTOL torque redistribution (vtol_att_control VT_RD_*), looked up at runtime: absent on fixed-wing-only builds
+	struct {
+		bool en{false};
+		float ks[2] {};
+		float bu[2] {};
+	} _vt_rd;
+	void updateVtolRedistributionParams();
+	uORB::SubscriptionMultiArray<control_allocator_status_s, 2> _ca_status_subs{ORB_ID::control_allocator_status};
+	control_allocator_status_s _ca_status[2] {};
+	/** Roll/pitch torque produced last cycle, in surface units: surfaces plus what the lift rotors gave of the rest */
+	float achievedTorque(int axis, float setpoint, float q_dyn);
 
 	bool _upset{false};
 	uint8_t _upset_trigger{0};

@@ -71,6 +71,7 @@
 #include <uORB/topics/vehicle_status.h>
 #include <uORB/topics/vehicle_thrust_setpoint.h>
 #include <uORB/topics/vehicle_torque_setpoint.h>
+#include <uORB/topics/vehicle_air_data.h>
 #include <uORB/topics/launch_detection_status.h>
 
 using matrix::Eulerf;
@@ -248,6 +249,10 @@ private:
 	matrix::Vector3f _indi_u_act{};		///< INDI: achieved torque through the actuator lag
 	matrix::Vector3f _indi_u_filt{};		///< INDI: ... and the angular acceleration filter delay
 	bool _indi_active{false};
+	matrix::Vector3f _indi_was_active{};		///< INDI controlled the axis last cycle (1) or not (0)
+	matrix::Vector3f _indi_last_u{};		///< INDI torque beyond the trim, last cycle (PID hand-over)
+	float _rho_ratio{1.f};				///< air density / sea level (redistribution ratio, as vtol_att_control)
+	uORB::Subscription _vehicle_air_data_sub{ORB_ID(vehicle_air_data)};
 
 	RateControl _rate_control; ///< class for rate control calculations
 	GainCompression3d _gain_compression{this};

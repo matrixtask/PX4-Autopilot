@@ -598,14 +598,10 @@ void Standard::redistributeTorque()
 		_rd_last_excess = now;
 	}
 
-	// Keep the rotors ready while the attitude is upset (fw_att_control upset recovery, or tilt > 45 deg), whether or not
-	// the surfaces are saturated now
-	const matrix::Quatf q_att(_v_att->q);
-	const float cos_tilt = 1.f - 2.f * (q_att(1) * q_att(1) + q_att(2) * q_att(2));
+	// Keep the rotors ready while fw_att_control runs its upset recovery, whether or not the surfaces are saturated now
 	upset_recovery_status_s upset_status{};
-	const bool upset_flag = _upset_status_sub.copy(&upset_status) && upset_status.active
-				&& hrt_elapsed_time(&upset_status.timestamp) < 500_ms;
-	const bool upset = upset_flag || (q_att.isAllFinite() && cos_tilt < 0.7071f);
+	const bool upset = _upset_status_sub.copy(&upset_status) && upset_status.active
+			   && hrt_elapsed_time(&upset_status.timestamp) < 500_ms;
 
 	if (upset) {
 		_rd_last_excess = now;
@@ -628,8 +624,11 @@ void Standard::redistributeTorque()
 	const float slew_up = _param_vt_rd_slew.get();
 	const float slew_down = 0.2f * slew_up;
 
-	if (target > _rd_collective) {
-		_rd_collective = (slew_up > FLT_EPSILON) ? math::min(target, _rd_collective + slew_up * dt) : target;
+	if (slew_up < FLT_EPSILON) {
+		_rd_collective = target; // no slew: follow the target both ways
+
+	} else if (target > _rd_collective) {
+		_rd_collective = math::min(target, _rd_collective + slew_up * dt);
 
 	} else {
 		// keep the collective while holding (the torque changes sign during the recovery), then wind down slowly
