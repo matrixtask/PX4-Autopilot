@@ -2898,7 +2898,7 @@ float FixedWingModeManager::glidePathAltitude(const position_setpoint_s &pos_sp_
 	// The leg from the previous to the current waypoint is flown as a straight glide path: the altitude setpoint
 	// follows the along-track position, so a descent (or climb) is spread over the whole leg instead of being flown at
 	// the maximum rate right after the waypoint switch and then held (step - hold - step). TECS shapes the reference
-	// with FW_T_REF_ACC / FW_T_REF_JERK; that S-curve lags a moving target by about vz / (2 a) + a / (2 j), and TECS
+	// with FW_T_REF_ACC / FW_T_REF_JERK; that S-curve lags a moving target by vz / (2 a) + 2 a / j seconds, and TECS
 	// itself lags its reference by FW_WP_GLIDE_LD. The setpoint leads by that time, also across the current waypoint
 	// onto the next leg, so a change of gradient is blended around the waypoint and the vehicle is at the waypoint
 	// altitude when it gets there (more than NAV_FW_ALT_RAD off makes PX4 circle at the waypoint).
@@ -2933,8 +2933,11 @@ float FixedWingModeManager::glidePathAltitude(const position_setpoint_s &pos_sp_
 
 	if (ref_accel > FLT_EPSILON) {
 		const float ref_jerk = _param_fw_t_ref_jerk.get();
+		// steady lag of the reference behind a target moving at vz: TECS sets the reference rate from the distance to
+		// the target with computeMaxSpeedFromDistance(j, a, d, 0), i.e. vz^2 + (4 a^2 / j) vz = 2 a d, so
+		// d / vz = vz / (2 a) + 2 a / j (HQ01 v10: 60 m behind at 8.9 m/s with a 1.5, j 0.75)
 		lead_time += math::max(fabsf(gradient), fabsf(next_gradient)) * ground_speed_along / (2.f * ref_accel)
-			     + ((ref_jerk > FLT_EPSILON) ? ref_accel / (2.f * ref_jerk) : 0.f);
+			     + ((ref_jerk > FLT_EPSILON) ? 2.f * ref_accel / ref_jerk : 0.f);
 	}
 
 	const float ahead = along_track + ground_speed_along * lead_time;

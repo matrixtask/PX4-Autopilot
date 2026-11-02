@@ -99,6 +99,12 @@ private:
 	float _handover_collective{0.f}; ///< lift-rotor up-thrust [0, 1] in FW
 	hrt_abstime _handover_time{0};
 
+	// CCV feed-forward (VT_LIFT_HND_AOA): pitch for the lift the rotors give up after the front transition
+	static constexpr float kCcvWashoutTimeConstant = 20.f; ///< [s] wash-out once the rotors are off (TECS takes over)
+	float _ccv_share_start{0.f};  ///< rotor weight share at FW entry
+	float _ccv_pitch{0.f};        ///< [rad] pitch feed-forward
+	hrt_abstime _ccv_washout_time{0};
+
 	// Feed-forward back-transition brake (VT_BFF_EN, FlightTaskTransition): pitch comes with the MC attitude setpoint
 	uORB::Subscription _brake_setpoint_sub{ORB_ID(vtol_brake_setpoint)};
 	vtol_brake_setpoint_s _brake_setpoint{};
@@ -115,6 +121,7 @@ private:
 					(ParamFloat<px4::params::VT_LIFT_HND_THR>) _param_vt_lift_hnd_thr,
 					(ParamFloat<px4::params::VT_LIFT_HND_SLW>) _param_vt_lift_hnd_slw,
 					(ParamFloat<px4::params::VT_LIFT_HND_KV>) _param_vt_lift_hnd_kv,
+					(ParamFloat<px4::params::VT_LIFT_HND_AOA>) _param_vt_lift_hnd_aoa,
 					(ParamFloat<px4::params::VT_SIG_TAU>) _param_vt_sig_tau,
 					(ParamFloat<px4::params::VT_SIG_RATE>) _param_vt_sig_rate,
 					(ParamFloat<px4::params::VT_FW_RDIFF>) _param_vt_fw_rdiff,

@@ -104,6 +104,21 @@ parameters:
       max: 0.2
       decimal: 3
       increment: 0.005
+    VT_LIFT_HND_AOA:
+      description:
+        short: Wing angle of attack for the full weight at VT_LIFT_HND_V (CCV feed-forward)
+        long: |-
+          After the front transition, the pitch setpoint is raised by this angle times the rotor weight share
+          the lift rotors have given up since FW entry, times (VT_LIFT_HND_V / airspeed)^2, so the wing takes
+          over the lift as the rotors release it instead of after the vehicle has started to sink. Washes out
+          (20 s) once the rotors are off. 0 = off.
+      type: float
+      default: 0.0
+      unit: deg
+      min: 0.0
+      max: 15.0
+      decimal: 1
+      increment: 0.1
     VT_SIG_TAU:
       description:
         short: Airspeed filter time constant for the rotor/wing schedules

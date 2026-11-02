@@ -360,6 +360,51 @@ void Standard::update_mc_state()
 void Standard::update_fw_state()
 {
 	VtolType::update_fw_state();
+
+	// CCV feed-forward on the rotor handover (Veronte V3-4 CCV FF): the lift the rotors give up after the front
+	// transition must come from the wing. Instead of waiting for the TECS pitch loop to see the sink, raise the pitch
+	// setpoint by the angle of attack that lift needs: VT_LIFT_HND_AOA (wing AoA for the full weight at VT_LIFT_HND_V)
+	// x released rotor share x (VT_LIFT_HND_V / V)^2. Once the rotors are off it washes out slowly while the TECS pitch
+	// integrator takes it over.
+	const float aoa = math::radians(_param_vt_lift_hnd_aoa.get());
+	const float hover = _param_vt_lift_hnd_thr.get();
+	const float v_wing = _param_vt_lift_hnd_v.get();
+	const hrt_abstime now = hrt_absolute_time();
+
+	if (_handover_time == 0) {
+		// first FW cycle (the handover state is reset in every other mode)
+		_ccv_share_start = (hover > 0.01f) ? math::constrain(-_front_transition_end_thrust / hover, 0.f, 1.f) : 0.f;
+		_ccv_pitch = 0.f;
+		_ccv_washout_time = 0;
+	}
+
+	if (aoa < FLT_EPSILON || hover < 0.01f || v_wing < FLT_EPSILON) {
+		_ccv_pitch = 0.f;
+		return;
+	}
+
+	const float share = (_handover_time == 0) ? _ccv_share_start : math::constrain(_handover_collective / hover, 0.f, 1.f);
+
+	if (share > 0.f || _ccv_washout_time == 0) {
+		const float cas = PX4_ISFINITE(_cas_schedule) ? math::max(_cas_schedule, 0.5f * v_wing) : v_wing;
+		const float released = math::max(_ccv_share_start - share, 0.f);
+		_ccv_pitch = aoa * released * (v_wing / cas) * (v_wing / cas);
+
+		if (share <= 0.f) {
+			_ccv_washout_time = now; // rotors off: start the wash-out from here
+		}
+
+	} else {
+		const float dt = math::constrain((now - _ccv_washout_time) * 1e-6f, 0.f, 0.1f);
+		_ccv_washout_time = now;
+		_ccv_pitch -= _ccv_pitch * dt / kCcvWashoutTimeConstant;
+	}
+
+	if (fabsf(_ccv_pitch) > 1e-4f) {
+		Eulerf euler{Quatf(_v_att_sp->q_d)};
+		euler.theta() += _ccv_pitch;
+		Quatf(euler).copyTo(_v_att_sp->q_d);
+	}
 }
 
 /**
