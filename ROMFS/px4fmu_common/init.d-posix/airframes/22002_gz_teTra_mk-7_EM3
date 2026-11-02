@@ -423,7 +423,7 @@ param set-default FW_T_SINK_MAX 13.0   # (was 8)
 param set-default FW_T_REF_ACC 1.5  # 0.15 g (comfort upper limit); 1.0 lagged the steep arrival legs by ~30 m (v9)
 param set-default FW_T_REF_JERK 0.75
 param set-default FW_WP_GLIDE 1
-param set-default FW_WP_GLIDE_LD 2.0  # TECS lags its reference ~2 s in the descent (v10: 15-19 m at 8.5 m/s)
+param set-default FW_WP_GLIDE_TC 8.0  # glide path as a climb-rate command (gradient x ground speed + altitude error / 8 s); an altitude setpoint lagged 30-60 m (v10/v11)
 param set-default FW_THR_SLEW_MAX 0.3
 # C (11/02, Tasuku A+B+C): beyond the idle sink (FW_T_SINK_MIN 10) the spoilers make up the drag (full spoiler at
 # 72 m/s ~ +4 kN, ~ +18 m/s sink); fw_mode_manager deploys them on the TECS sink shortfall at minimum throttle.

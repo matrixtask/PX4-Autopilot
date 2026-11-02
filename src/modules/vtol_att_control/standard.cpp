@@ -373,6 +373,8 @@ void Standard::update_fw_state()
 
 	if (_handover_time == 0) {
 		// first FW cycle (the handover state is reset in every other mode)
+// weight share the rotors carry at FW entry, at most 1: a climbing transition ends above hover thrust (HQ01
+		// 0.63 / 0.42) because the rotors lose thrust in forward flight, not because they carry more than the weight
 		_ccv_share_start = (hover > 0.01f) ? math::constrain(-_front_transition_end_thrust / hover, 0.f, 1.f) : 0.f;
 		_ccv_pitch = 0.f;
 		_ccv_washout_time = 0;
@@ -383,7 +385,10 @@ void Standard::update_fw_state()
 		return;
 	}
 
-	const float share = (_handover_time == 0) ? _ccv_share_start : math::constrain(_handover_collective / hover, 0.f, 1.f);
+	// share now: scaled with the collective from its end-of-transition value, so the release counts from FW entry
+	const float collective_start = -_front_transition_end_thrust;
+	const float share = (_handover_time == 0 || collective_start < 0.01f) ? _ccv_share_start
+			    : _ccv_share_start * math::constrain(_handover_collective / collective_start, 0.f, 1.f);
 
 	if (share > 0.f || _ccv_washout_time == 0) {
 		const float cas = PX4_ISFINITE(_cas_schedule) ? math::max(_cas_schedule, 0.5f * v_wing) : v_wing;

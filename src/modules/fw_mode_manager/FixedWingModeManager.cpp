@@ -812,11 +812,13 @@ FixedWingModeManager::control_auto_position(const float control_interval, const 
 
 	// waypoint is a plain navigation waypoint
 	float position_sp_alt = pos_sp_curr.alt;
+	float height_rate_sp = NAN;
 
 	if (_param_fw_wp_glide.get() && _position_setpoint_previous_valid
 	    && pos_sp_prev.type == position_setpoint_s::SETPOINT_TYPE_POSITION) {
-		// Glide path: altitude along the whole leg (previous -> current waypoint) from the along-track position.
-		position_sp_alt = glidePathAltitude(pos_sp_prev, pos_sp_curr, ground_speed);
+		// Glide path: climb-rate command along the whole leg (previous -> current waypoint)
+		height_rate_sp = glidePathHeightRate(pos_sp_prev, pos_sp_curr, ground_speed);
+		position_sp_alt = NAN;
 
 	} else if (_position_setpoint_previous_valid &&
 		   ((pos_sp_prev.type == position_setpoint_s::SETPOINT_TYPE_POSITION) ||
@@ -852,7 +854,7 @@ FixedWingModeManager::control_auto_position(const float control_interval, const 
 	const fixed_wing_longitudinal_setpoint_s fw_longitudinal_control_sp = {
 		.timestamp = hrt_absolute_time(),
 		.altitude = position_sp_alt,
-		.height_rate = NAN,
+		.height_rate = height_rate_sp,
 		.equivalent_airspeed = target_airspeed,
 		.pitch_direct = NAN,
 		.throttle_direct = NAN
@@ -2892,23 +2894,23 @@ float FixedWingModeManager::descentSpoilers(const float dt)
 	return _descent_spoiler;
 }
 
-float FixedWingModeManager::glidePathAltitude(const position_setpoint_s &pos_sp_prev,
+float FixedWingModeManager::glidePathHeightRate(const position_setpoint_s &pos_sp_prev,
 		const position_setpoint_s &pos_sp_curr, const Vector2f &ground_speed) const
 {
-	// The leg from the previous to the current waypoint is flown as a straight glide path: the altitude setpoint
-	// follows the along-track position, so a descent (or climb) is spread over the whole leg instead of being flown at
-	// the maximum rate right after the waypoint switch and then held (step - hold - step). TECS shapes the reference
-	// with FW_T_REF_ACC / FW_T_REF_JERK; that S-curve lags a moving target by vz / (2 a) + 2 a / j seconds, and TECS
-	// itself lags its reference by FW_WP_GLIDE_LD. The setpoint leads by that time, also across the current waypoint
-	// onto the next leg, so a change of gradient is blended around the waypoint and the vehicle is at the waypoint
-	// altitude when it gets there (more than NAV_FW_ALT_RAD off makes PX4 circle at the waypoint).
+	// Path-angle loop (Veronte FW-CLB/DES): each leg from the previous to the current waypoint is a straight glide
+	// path. Command the climb rate of that path at the current ground speed (feed-forward) plus the altitude error to
+	// the path over FW_WP_GLIDE_TC. TECS shapes the command with FW_T_REF_ACC / FW_T_REF_JERK (S-curve), so a change
+	// of gradient at a waypoint is started half a transition early. An altitude setpoint instead (PX4 default) is
+	// tracked by a reference that brakes on the distance to the target and fell 30-60 m behind on the steep
+	// arrival legs (HQ01 v10/v11), where PX4 circles at the waypoint if more than NAV_FW_ALT_RAD off.
 	const Vector2f prev_local = _global_local_proj_ref.project(pos_sp_prev.lat, pos_sp_prev.lon);
 	const Vector2f curr_local = _global_local_proj_ref.project(pos_sp_curr.lat, pos_sp_curr.lon);
 	const Vector2f leg = curr_local - prev_local;
 	const float leg_length = leg.norm();
+	const float altitude = _current_altitude;
 
-	if (leg_length < 1.f) {
-		return pos_sp_curr.alt;
+	if (leg_length < 1.f || !PX4_ISFINITE(altitude)) {
+		return NAN;
 	}
 
 	const Vector2f leg_unit = leg / leg_length;
@@ -2917,7 +2919,7 @@ float FixedWingModeManager::glidePathAltitude(const position_setpoint_s &pos_sp_
 	const float gradient = (pos_sp_curr.alt - pos_sp_prev.alt) / leg_length;
 	const float ground_speed_along = math::max(ground_speed.dot(leg_unit), 0.f);
 
-	// next leg (only a plain waypoint: a landing / back transition flies its own vertical profile)
+	// next leg (only a plain waypoint: a landing / back transition flies its own vertical profile, level off there)
 	const position_setpoint_s &pos_sp_next = _pos_sp_triplet.next;
 	const bool next_leg = _position_setpoint_next_valid && pos_sp_next.type == position_setpoint_s::SETPOINT_TYPE_POSITION;
 	float next_length = 0.f;
@@ -2928,25 +2930,26 @@ float FixedWingModeManager::glidePathAltitude(const position_setpoint_s &pos_sp_
 		next_gradient = (next_length > 1.f) ? (pos_sp_next.alt - pos_sp_curr.alt) / next_length : 0.f;
 	}
 
-	float lead_time = math::max(_param_fw_wp_glide_ld.get(), 0.f);
+	// altitude of the path at the current position (past the waypoint: on the next leg, or level)
+	float path_altitude = pos_sp_prev.alt + math::constrain(along_track / leg_length, 0.f, 1.f) * (pos_sp_curr.alt -
+			      pos_sp_prev.alt);
+
+	if (along_track > leg_length) {
+		path_altitude = pos_sp_curr.alt + next_gradient * math::min(along_track - leg_length, next_length);
+	}
+
+	// gradient change at the waypoint: start it half the S-curve early, (dv / a + a / j) / 2
+	const float rate_now = gradient * ground_speed_along;
+	const float rate_next = next_gradient * ground_speed_along;
 	const float ref_accel = _param_fw_t_ref_acc.get();
+	const float ref_jerk = _param_fw_t_ref_jerk.get();
+	float lead_time = 0.f;
 
 	if (ref_accel > FLT_EPSILON) {
-		const float ref_jerk = _param_fw_t_ref_jerk.get();
-		// steady lag of the reference behind a target moving at vz: TECS sets the reference rate from the distance to
-		// the target with computeMaxSpeedFromDistance(j, a, d, 0), i.e. vz^2 + (4 a^2 / j) vz = 2 a d, so
-		// d / vz = vz / (2 a) + 2 a / j (HQ01 v10: 60 m behind at 8.9 m/s with a 1.5, j 0.75)
-		lead_time += math::max(fabsf(gradient), fabsf(next_gradient)) * ground_speed_along / (2.f * ref_accel)
-			     + ((ref_jerk > FLT_EPSILON) ? 2.f * ref_accel / ref_jerk : 0.f);
+		lead_time = 0.5f * (fabsf(rate_next - rate_now) / ref_accel + ((ref_jerk > FLT_EPSILON) ? ref_accel / ref_jerk : 0.f));
 	}
 
-	const float ahead = along_track + ground_speed_along * lead_time;
-
-	if (ahead <= leg_length || !next_leg || next_length <= 1.f) {
-		const float progress = math::constrain(ahead / leg_length, 0.f, 1.f);
-		return pos_sp_prev.alt + progress * (pos_sp_curr.alt - pos_sp_prev.alt);
-	}
-
-	const float progress_next = math::constrain((ahead - leg_length) / next_length, 0.f, 1.f);
-	return pos_sp_curr.alt + progress_next * (pos_sp_next.alt - pos_sp_curr.alt);
+	const float rate_ff = (along_track + ground_speed_along * lead_time >= leg_length) ? rate_next : rate_now;
+	const float time_constant = math::max(_param_fw_wp_glide_tc.get(), 1.f);
+	return rate_ff + (path_altitude - altitude) / time_constant;
 }
