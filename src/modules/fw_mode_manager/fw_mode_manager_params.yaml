@@ -224,23 +224,23 @@ parameters:
       description:
         short: Glide path between mission waypoints
         long: |-
-          Fly each mission leg as a straight glide path: TECS gets the climb rate of the path from the previous
-          to the current waypoint (gradient x ground speed) plus a correction of the altitude error to the path,
-          so a descent or climb is spread over the whole leg and gradient changes are S-curves around the
-          waypoint. 0 = PX4 default (altitude setpoint, reached at the acceptance radius).
+          Fly each mission leg as a straight glide path: the altitude setpoint follows the along-track position
+          from the previous to the current waypoint, so a descent or climb is spread over the whole leg. 0 = PX4
+          default (reach the waypoint altitude at the acceptance radius, step at short legs).
       type: boolean
       default: 0
-    FW_WP_GLIDE_TC:
+    FW_WP_GLIDE_LD:
       description:
-        short: Glide-path altitude time constant
+        short: Glide-path lead time for the altitude tracking lag
         long: |-
-          With FW_WP_GLIDE, the climb-rate command is the path gradient times the ground speed plus the altitude
-          error to the path divided by this time constant.
+          With FW_WP_GLIDE, the altitude setpoint leads the along-track position by the lag of the TECS altitude
+          reference (from FW_T_REF_ACC / FW_T_REF_JERK) plus this time, which covers the lag of the altitude
+          loop itself. The lead continues onto the next leg, so gradient changes are blended around the waypoint.
       type: float
-      default: 8.0
+      default: 0.0
       unit: s
-      min: 1.0
-      max: 30.0
+      min: 0.0
+      max: 10.0
       decimal: 1
       increment: 0.5
     FW_SPOILERS_LND:
