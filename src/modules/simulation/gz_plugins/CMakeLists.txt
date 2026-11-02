@@ -79,6 +79,7 @@ if (gz-transport_FOUND)
     add_subdirectory(spacecraft_thruster)
     add_subdirectory(motor_failure)
     add_subdirectory(flaperon_drag)
+    add_subdirectory(wake_vortex)
     add_subdirectory(propeller_aero)
     add_subdirectory(airspeed)
 
