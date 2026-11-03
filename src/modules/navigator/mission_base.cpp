@@ -1594,9 +1594,16 @@ void MissionBase::updateTakeoffHeading()
 	// The climb before the first item is a TAKEOFF when the land detector still reports landed, otherwise a
 	// LOITER_TO_ALT straight above (HQ01: always the latter, so the turn never happened and yaw-first swung the nose
 	// after the bearing to the point overhead).
-	const bool climbing = _work_item_type == WorkItemType::WORK_ITEM_TYPE_CLIMB
-			      && (_mission_item.nav_cmd == NAV_CMD_TAKEOFF || _mission_item.nav_cmd == NAV_CMD_VTOL_TAKEOFF
-				  || _mission_item.nav_cmd == NAV_CMD_LOITER_TO_ALT);
+	// After that climb the takeoff item itself is flown as a waypoint over the pad: keep the heading there too,
+	// otherwise yaw-first points the nose at the pad point a few metres away (SITL 14 km test: a 25 deg turn the
+	// wrong way and 8.6 s turning back before the transition).
+	mission_item_s stored{};
+	const bool takeoff_item = loadMissionItemFromCache(_mission.current_seq, stored)
+				  && (stored.nav_cmd == NAV_CMD_TAKEOFF || stored.nav_cmd == NAV_CMD_VTOL_TAKEOFF);
+	const bool climbing = (_work_item_type == WorkItemType::WORK_ITEM_TYPE_CLIMB
+			       && (_mission_item.nav_cmd == NAV_CMD_TAKEOFF || _mission_item.nav_cmd == NAV_CMD_VTOL_TAKEOFF
+				   || _mission_item.nav_cmd == NAV_CMD_LOITER_TO_ALT))
+			      || (takeoff_item && _mission_item.nav_cmd == NAV_CMD_WAYPOINT);
 
 	if (!_param_mis_tko_yaw_nx.get() || !climbing || !_vehicle_status_sub.get().is_vtol
 	    || _vehicle_status_sub.get().vehicle_type != vehicle_status_s::VEHICLE_TYPE_ROTARY_WING) {
