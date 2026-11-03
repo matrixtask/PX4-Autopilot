@@ -99,12 +99,16 @@ MulticopterRateControl::parameters_updated()
 				  radians(_param_mc_acro_y_max.get()));
 
 	_output_lpf_yaw.setCutoffFreq(_param_mc_yaw_tq_cutoff.get());
-	_yaw_rate_sp_dot_lpf.setCutoffFreq(2.f);
-	_yaw_acc_ff = _param_mc_yaw_acc_ff.get();  // a parameter change (also our own save on landing) restarts from it
+	_rate_sp_dot_lpf.setCutoffFreq(2.f);
 	_id_u_fast.setCutoffFreq(3.f);
 	_id_y_fast.setCutoffFreq(3.f);
 	_id_u_slow.setCutoffFreq(0.2f);
 	_id_y_slow.setCutoffFreq(0.2f);
+
+	// a human confirmed the provisional estimate (QGC / param set MC_ID_CONFIRM 1), only applied on the ground
+	if (_param_mc_id_confirm.get() == 1 && !_vehicle_control_mode.flag_armed) {
+		confirmIdentification();
+	}
 }
 
 void
@@ -225,25 +229,44 @@ MulticopterRateControl::Run()
 			Vector3f torque_setpoint =
 				_rate_control.update(rates, _rates_setpoint, angular_accel, dt, _maybe_landed || _landed);
 
-			// yaw acceleration feed-forward: d/dt of the yaw rate setpoint (2 Hz low-pass) x MC_YAW_ACC_FF
-			if (_yaw_acc_ff > FLT_EPSILON && dt > 1e-4f && PX4_ISFINITE(_yaw_rate_sp_prev)
-			    && _vehicle_control_mode.flag_armed && !_landed && !_maybe_landed) {
-				const float yaw_acc_sp = _yaw_rate_sp_dot_lpf.update((_rates_setpoint(2) - _yaw_rate_sp_prev) / dt, dt);
-				// bounded: a rate setpoint step (mode switch) must not kick the yaw axis
-				torque_setpoint(2) += math::constrain(_yaw_acc_ff * yaw_acc_sp, -0.3f, 0.3f);
-
-			} else {
-				_yaw_rate_sp_dot_lpf.reset(0.f);
+			// hover trim torque (roll/pitch): the steady moment of the CG offset. Applied from arming, so it is
+			// there at lift-off; the rate integrator is held at zero on the ground and took >10 s to build it
+			// (Mk-7 SITL: 0.016 pitch, the nose sagged 4-6 deg for seconds after lift-off and the aircraft drifted)
+			if (_vehicle_control_mode.flag_armed) {
+				torque_setpoint(0) += _param_mc_tq_trim_r.get();
+				torque_setpoint(1) += _param_mc_tq_trim_p.get();
 			}
 
-			_yaw_rate_sp_prev = _rates_setpoint(2);
+			// angular-acceleration feed-forward: d/dt of the rate setpoint (2 Hz low-pass) / MC_ID_B_x, per axis
+			const bool airborne = _vehicle_control_mode.flag_armed && !_landed && !_maybe_landed;
+			const float b_conf[3] {_param_mc_id_b_r.get(), _param_mc_id_b_p.get(), _param_mc_id_b_y.get()};
+
+			if (_param_mc_acc_ff_en.get() != 0 && airborne && dt > 1e-4f && _rate_sp_prev.isAllFinite()) {
+				const Vector3f acc_sp = _rate_sp_dot_lpf.update((_rates_setpoint - _rate_sp_prev) / dt, dt);
+
+				for (int i = 0; i < 3; i++) {
+					if ((_param_mc_acc_ff_en.get() & (1 << i)) && b_conf[i] > 0.02f) {
+						// bounded: a rate setpoint step (mode switch) must not kick the axis
+						torque_setpoint(i) += math::constrain(acc_sp(i) / b_conf[i], -0.3f, 0.3f);
+					}
+				}
+
+			} else {
+				_rate_sp_dot_lpf.reset(Vector3f{});
+			}
+
+			_rate_sp_prev = _rates_setpoint;
 
 			// apply low-pass filtering on yaw axis to reduce high frequency torque caused by rotor acceleration
 			torque_setpoint(2) = _output_lpf_yaw.update(torque_setpoint(2), dt);
 
-			updateYawIdentification(torque_setpoint(2), angular_accel(2), dt,
-						_vehicle_control_mode.flag_armed && !_landed && !_maybe_landed
-						&& _vehicle_status.vehicle_type == vehicle_status_s::VEHICLE_TYPE_ROTARY_WING);
+			{
+				rate_ctrl_status_s integ{};
+				_rate_control.getRateControlStatus(integ);
+				updateIdentification(torque_setpoint, angular_accel, dt,
+						     airborne && _vehicle_status.vehicle_type == vehicle_status_s::VEHICLE_TYPE_ROTARY_WING,
+						     rates, Vector3f{integ.rollspeed_integ, integ.pitchspeed_integ, integ.yawspeed_integ});
+			}
 
 			// publish rate controller status
 			rate_ctrl_status_s rate_ctrl_status{};
@@ -294,105 +317,193 @@ MulticopterRateControl::Run()
 	perf_end(_loop_perf);
 }
 
-void MulticopterRateControl::updateYawIdentification(float torque_z, float yaw_accel, float dt, bool in_air)
+void MulticopterRateControl::confirmIdentification()
 {
-	if (_param_mc_yaw_id_en.get() <= 0 || !PX4_ISFINITE(torque_z) || !PX4_ISFINITE(yaw_accel)) {
+	// provisional -> confirmed for every axis that has a provisional value; then stop estimating and saving
+	param_t pb[3] {param_find("MC_ID_PB_R"), param_find("MC_ID_PB_P"), param_find("MC_ID_PB_Y")};
+	param_t px[3] {param_find("MC_ID_PX_R"), param_find("MC_ID_PX_P"), param_find("MC_ID_PX_Y")};
+	param_t bc[3] {param_find("MC_ID_B_R"), param_find("MC_ID_B_P"), param_find("MC_ID_B_Y")};
+	static constexpr char axis_name[3] {'R', 'P', 'Y'};
+	const float zero = 0.f;
+
+	for (int i = 0; i < 3; i++) {
+		float v = 0.f;
+		param_get(pb[i], &v);
+
+		if (v > 0.f) {
+			param_set_no_notification(bc[i], &v);
+			PX4_INFO("MC_ID_B_%c confirmed: %.3f rad/s^2 per unit torque", axis_name[i], (double)v);
+		}
+
+		param_set_no_notification(pb[i], &zero);
+		param_set_no_notification(px[i], &zero);
+	}
+
+	const param_t pt[2] {param_find("MC_ID_PT_R"), param_find("MC_ID_PT_P")};
+	const param_t tt[2] {param_find("MC_TQ_TRIM_R"), param_find("MC_TQ_TRIM_P")};
+
+	for (int i = 0; i < 2; i++) {
+		float v = 0.f;
+		param_get(pt[i], &v);
+
+		if (fabsf(v) > FLT_EPSILON) {	// 0 = no provisional trim
+			param_set_no_notification(tt[i], &v);
+			PX4_INFO("MC_TQ_TRIM_%c confirmed: %.4f", axis_name[i], (double)v);
+		}
+
+		param_set_no_notification(pt[i], &zero);
+	}
+
+	const int32_t off = 0;
+	param_set_no_notification(param_find("MC_ID_EN"), &off);
+	param_set(param_find("MC_ID_CONFIRM"), &off);	// the last one notifies: QGC and this module reload
+	mavlink_log_info(&_mavlink_log_pub, "Control effectiveness confirmed, identification stopped\t");
+
+	for (int i = 0; i < 3; i++) {
+		_id_b[i] = NAN;
+	}
+}
+
+void MulticopterRateControl::updateIdentification(const Vector3f &torque, const Vector3f &accel, float dt,
+		bool in_air, const Vector3f &rates, const Vector3f &rate_integral)
+{
+	if (_param_mc_id_en.get() != 1 || !torque.isAllFinite() || !accel.isAllFinite()) {
+		_id_was_in_air = false;
 		return;
 	}
 
 	static constexpr float P0 = 100.f;	// initial / maximum covariance
-	static constexpr float kMinExcitation = 5.f;	// [s] of usable excitation before the estimate is trusted
+	static constexpr float kMinExcitation = 5.f;	// [s] of usable excitation before an estimate is trusted
+	static constexpr char axis_name[3] {'R', 'P', 'Y'};
+	const float pb[3] {_param_mc_id_pb_r.get(), _param_mc_id_pb_p.get(), _param_mc_id_pb_y.get()};
+	const float bc[3] {_param_mc_id_b_r.get(), _param_mc_id_b_p.get(), _param_mc_id_b_y.get()};
 
-	if (!PX4_ISFINITE(_id_b)) {
-		const float ff = _param_mc_yaw_acc_ff.get();
-		_id_b = ff > 0.05f ? 1.f / ff : 1.f;	// start from the configured feed-forward
-		_id_p = P0;
+	for (int i = 0; i < 3; i++) {
+		if (!PX4_ISFINITE(_id_b[i])) {	// start from the provisional value, else the confirmed one
+			_id_b[i] = pb[i] > 0.02f ? pb[i] : (bc[i] > 0.02f ? bc[i] : 1.f);
+			_id_p[i] = P0;
+		}
 	}
 
-	// on landing: keep a converged estimate as the new MC_YAW_ACC_FF (EN = 2)
-	// (the excitation decays during the quiet landing, so "converged at some time in this flight" counts)
-	if (_id_was_in_air && !in_air && _param_mc_yaw_id_en.get() == 2 && _id_flight_converged) {
-		const float ff = math::constrain(1.f / _id_b, 0.1f, 10.f);
-		_param_mc_yaw_acc_ff.set(ff);
-		_param_mc_yaw_acc_ff.commit_no_notification();
-		PX4_INFO("yaw effectiveness %.3f rad/s^2 per unit torque -> MC_YAW_ACC_FF %.2f saved", (double)_id_b, (double)ff);
+	// on landing: save the estimate of every axis that converged in this flight as provisional (MC_ID_PB_x) with its
+	// excitation (MC_ID_PX_x) for review. Confirmation is a human decision (MC_ID_CONFIRM).
+	if (_id_was_in_air && !in_air) {
+		const param_t pbh[3] {param_find("MC_ID_PB_R"), param_find("MC_ID_PB_P"), param_find("MC_ID_PB_Y")};
+		const param_t pxh[3] {param_find("MC_ID_PX_R"), param_find("MC_ID_PX_P"), param_find("MC_ID_PX_Y")};
+
+		for (int i = 0; i < 3; i++) {
+			if (_id_excitation_max[i] >= kMinExcitation) {
+				param_set_no_notification(pbh[i], &_id_b[i]);
+				param_set_no_notification(pxh[i], &_id_excitation_max[i]);
+				PX4_INFO("MC_ID_PB_%c provisional: %.3f rad/s^2 per unit torque (%.0f s excitation)", axis_name[i],
+					 (double)_id_b[i], (double)_id_excitation_max[i]);
+			}
+		}
+
+		if (_id_trim_quiet_s >= 10.f) {	// hover trim from at least 10 s of quiet hover
+			const param_t pth[2] {param_find("MC_ID_PT_R"), param_find("MC_ID_PT_P")};
+
+			for (int i = 0; i < 2; i++) {
+				param_set_no_notification(pth[i], &_id_trim[i]);
+			}
+
+			PX4_INFO("MC_ID_PT provisional hover trim torque: roll %.4f pitch %.4f (%.0f s quiet hover)",
+				 (double)_id_trim[0], (double)_id_trim[1], (double)_id_trim_quiet_s);
+		}
 	}
 
 	if (!_id_was_in_air && in_air) {
-		_id_flight_converged = false;
+		for (int i = 0; i < 3; i++) { _id_excitation_max[i] = 0.f; }
+
+		_id_trim_quiet_s = 0.f;
+		_id_trim[0] = _param_mc_tq_trim_r.get();
+		_id_trim[1] = _param_mc_tq_trim_p.get();
 	}
 
 	_id_was_in_air = in_air;
 
 	if (!in_air) {
-		_id_tq_lag = torque_z;
-		_id_u_fast.reset(0.f);
-		_id_u_slow.reset(0.f);
-		_id_y_fast.reset(0.f);
-		_id_y_slow.reset(0.f);
+		_id_tq_lag = torque;
+		_id_u_fast.reset(Vector3f{});
+		_id_u_slow.reset(Vector3f{});
+		_id_y_fast.reset(Vector3f{});
+		_id_y_slow.reset(Vector3f{});
 		return;
 	}
 
-	// torque through the actuator lag (motor speed time constant), then the same band-pass on both signals
-	const float tau = math::max(_param_mc_yaw_id_tau.get(), 0.f);
-	_id_tq_lag += (torque_z - _id_tq_lag) * dt / (tau + dt);
-	const float u = _id_u_fast.update(_id_tq_lag, dt) - _id_u_slow.update(_id_tq_lag, dt);
-	const float y = _id_y_fast.update(yaw_accel, dt) - _id_y_slow.update(yaw_accel, dt);
+	// torque through the actuator lag (rotor speed time constant), then the same band-pass on both signals
+	const float tau = math::max(_param_mc_id_tau.get(), 0.f);
+	_id_tq_lag += (torque - _id_tq_lag) * (dt / (tau + dt));
+	const Vector3f u = _id_u_fast.update(_id_tq_lag, dt) - _id_u_slow.update(_id_tq_lag, dt);
+	const Vector3f y = _id_y_fast.update(accel, dt) - _id_y_slow.update(accel, dt);
 
-	const float window = math::max(_param_mc_yaw_id_t.get(), 1.f);
-	_id_excitation_s *= expf(-dt / window);
+	// Only the linear range on every axis: beyond MC_ID_TQLIM rotors reach idle/full and the torque is no longer
+	// delivered (SITL Mk-7 yaw: rotors at 0 above ~0.3; those samples halved the estimate), plus 0.5 s after while
+	// the band-pass still carries the saturated part.
+	const float tq_lim = _param_mc_id_tqlim.get();
+	bool linear = true;
 
-	// Only the linear range: beyond MC_YAW_ID_TQLIM rotors reach idle/full and the yaw torque is no longer delivered
-	// (SITL Mk-7: rotors at 0 above ~0.3; using those samples halved the estimate and doubled the feed-forward,
-	// which asked for even more torque).
-	const float tq_lim = _param_mc_yaw_id_tqlim.get();
-	const bool linear = fabsf(torque_z) < tq_lim && fabsf(_id_tq_lag) < tq_lim;
+	for (int i = 0; i < 3; i++) {
+		linear = linear && fabsf(torque(i)) < tq_lim && fabsf(_id_tq_lag(i)) < tq_lim;
+	}
 
 	if (!linear) {
-		_id_sat_hold = 0.5f;  // and a moment after, while the band-pass still carries the saturated part
+		_id_sat_hold = 0.5f;
 
 	} else if (_id_sat_hold > 0.f) {
 		_id_sat_hold -= dt;
 	}
 
-	if (fabsf(u) > _param_mc_yaw_id_exc.get() && linear && _id_sat_hold <= 0.f) {
-		// scalar RLS with forgetting (only while excited, so the covariance does not wind up in a hover)
-		const float lambda = expf(-dt / window);
-		const float k = _id_p * u / (1.f + _id_p * u * u);
-		const float b_new = _id_b + k * (y - _id_b * u);
-		_id_p = math::min((1.f - k * u) * _id_p / lambda, P0);
+	const float window = math::max(_param_mc_id_t.get(), 1.f);
+	const float lambda = expf(-dt / window);
 
-		if (b_new > 0.02f && b_new < 50.f) {	// physically possible effectiveness only
-			_id_b = b_new;
-			_id_excitation_s += dt;
-		}
+	// hover trim: in a quiet hover (all rates < 2 deg/s) the steady roll/pitch torque is the trim + the integral
+	if (rates.norm() < math::radians(2.f)) {
+		const float a = dt / 5.f;	// 5 s average
+		_id_trim[0] += a * (_param_mc_tq_trim_r.get() + rate_integral(0) - _id_trim[0]);
+		_id_trim[1] += a * (_param_mc_tq_trim_p.get() + rate_integral(1) - _id_trim[1]);
+		_id_trim_quiet_s += dt;
 	}
 
-	const bool converged = _id_excitation_s >= kMinExcitation;
-	_id_flight_converged |= converged;
-	const float ff_est = math::constrain(1.f / _id_b, 0.1f, 10.f);
+	for (int i = 0; i < 3; i++) {
+		_id_excitation_s[i] *= lambda;
 
-	if (_param_mc_yaw_id_en.get() == 2 && converged) {
-		// move the gain in use towards the estimate, at most 20 % of it per second
-		const float step = 0.2f * ff_est * dt;
-		_yaw_acc_ff += math::constrain(ff_est - _yaw_acc_ff, -step, step);
+		// excitation measured as the angular acceleration the torque should give (|u| * b): the same threshold
+		// fits axes whose effectiveness differs by 10x (Mk-7 SITL: roll/pitch ~4, yaw ~0.6 rad/s^2 per unit)
+		if (fabsf(u(i)) * _id_b[i] > _param_mc_id_exc.get() && linear && _id_sat_hold <= 0.f) {
+			// scalar RLS with forgetting (only while excited, so the covariance does not wind up in a hover)
+			const float k = _id_p[i] * u(i) / (1.f + _id_p[i] * u(i) * u(i));
+			const float b_new = _id_b[i] + k * (y(i) - _id_b[i] * u(i));
+			_id_p[i] = math::min((1.f - k * u(i)) * _id_p[i] / lambda, P0);
+
+			if (b_new > 0.02f && b_new < 50.f) {	// physically possible effectiveness only
+				_id_b[i] = b_new;
+				_id_excitation_s[i] += dt;
+			}
+		}
+
+		_id_excitation_max[i] = math::max(_id_excitation_max[i], _id_excitation_s[i]);
 	}
 
 	const hrt_abstime now = hrt_absolute_time();
 
 	if (now - _id_last_pub > 50_ms) {
-		yaw_id_status_s st{};
-		st.active = in_air;
-		st.converged = converged;
-		st.b_est = _id_b;
-		st.b_var = _id_p;
-		st.excitation_s = _id_excitation_s;
-		st.ff_est = ff_est;
-		st.ff_applied = _yaw_acc_ff;
-		st.u_bp = u;
-		st.y_bp = y;
+		effectiveness_id_status_s st{};
+		st.active = true;
+
+		for (int i = 0; i < 3; i++) {
+			st.converged[i] = _id_excitation_s[i] >= kMinExcitation;
+			st.b_est[i] = _id_b[i];
+			st.b_var[i] = _id_p[i];
+			st.excitation_s[i] = _id_excitation_s[i];
+			st.b_confirmed[i] = bc[i];
+			st.u_bp[i] = u(i);
+			st.y_bp[i] = y(i);
+		}
+
+		st.linear = linear && _id_sat_hold <= 0.f;
 		st.timestamp = now;
-		_yaw_id_status_pub.publish(st);
+		_effectiveness_id_status_pub.publish(st);
 		_id_last_pub = now;
 	}
 }

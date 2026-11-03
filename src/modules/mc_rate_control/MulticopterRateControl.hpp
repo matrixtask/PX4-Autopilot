@@ -60,7 +60,7 @@
 #include <uORB/topics/vehicle_status.h>
 #include <uORB/topics/vehicle_thrust_setpoint.h>
 #include <uORB/topics/vehicle_torque_setpoint.h>
-#include <uORB/topics/yaw_id_status.h>
+#include <uORB/topics/effectiveness_id_status.h>
 
 using namespace time_literals;
 
@@ -135,25 +135,32 @@ private:
 
 	AlphaFilter<float> _output_lpf_yaw;
 
-	// yaw angular-acceleration feed-forward (MC_YAW_ACC_FF): torque for the acceleration the yaw rate setpoint asks
-	// for, so a large yaw inertia starts and brakes a turn on the planned profile instead of after the error builds up
-	AlphaFilter<float> _yaw_rate_sp_dot_lpf;
-	float _yaw_rate_sp_prev{NAN};
-	float _yaw_acc_ff{0.f};	///< feed-forward gain in use (MC_YAW_ACC_FF, or the online estimate)
+	// Angular-acceleration feed-forward (MC_ACC_FF_EN): torque for the acceleration the rate setpoint asks for,
+	// 1 / MC_ID_B_x per axis, so a large inertia starts and brakes on the planned profile instead of after the
+	// error has built up
+	AlphaFilter<matrix::Vector3f> _rate_sp_dot_lpf;
+	matrix::Vector3f _rate_sp_prev{NAN, NAN, NAN};
 
-	// Online yaw effectiveness identification (MC_YAW_ID_EN): scalar RLS with exponential forgetting on
-	// yaw angular acceleration = b * (yaw torque through the actuator lag), both band-passed (0.2..3 Hz)
-	void updateYawIdentification(float torque_z, float yaw_accel, float dt, bool in_air);
-	float _id_tq_lag{0.f};
-	AlphaFilter<float> _id_u_fast, _id_u_slow, _id_y_fast, _id_y_slow;
-	float _id_b{NAN};
-	float _id_p{0.f};
-	float _id_excitation_s{0.f};
+	// In-flight effectiveness identification (MC_ID_EN): per-axis scalar RLS with exponential forgetting on
+	// angular acceleration = b * (torque through the actuator lag), both band-passed (0.2..3 Hz). The estimate is
+	// saved provisionally on landing (MC_ID_PB_x); MC_ID_CONFIRM copies it to MC_ID_B_x and stops the estimation.
+	void updateIdentification(const matrix::Vector3f &torque, const matrix::Vector3f &accel, float dt, bool in_air,
+				  const matrix::Vector3f &rates, const matrix::Vector3f &rate_integral);
+	// hover trim torque (roll, pitch): confirmed MC_TQ_TRIM_R/P + rate integral, averaged while quiet
+	float _id_trim[2] {};
+	float _id_trim_quiet_s{0.f};
+	void confirmIdentification();
+	matrix::Vector3f _id_tq_lag{};
+	AlphaFilter<matrix::Vector3f> _id_u_fast, _id_u_slow, _id_y_fast, _id_y_slow;
+	float _id_b[3] {NAN, NAN, NAN};
+	float _id_p[3] {};
+	float _id_excitation_s[3] {};
+	float _id_excitation_max[3] {};
 	float _id_sat_hold{0.f};
-	bool _id_flight_converged{false};
 	bool _id_was_in_air{false};
 	hrt_abstime _id_last_pub{0};
-	uORB::Publication<yaw_id_status_s> _yaw_id_status_pub{ORB_ID(yaw_id_status)};
+	orb_advert_t _mavlink_log_pub{nullptr};
+	uORB::Publication<effectiveness_id_status_s> _effectiveness_id_status_pub{ORB_ID(effectiveness_id_status)};
 
 	DEFINE_PARAMETERS(
 		(ParamFloat<px4::params::MC_ROLLRATE_P>) _param_mc_rollrate_p,
@@ -177,12 +184,26 @@ private:
 		(ParamFloat<px4::params::MC_YAWRATE_FF>) _param_mc_yawrate_ff,
 		(ParamFloat<px4::params::MC_YAWRATE_K>) _param_mc_yawrate_k,
 		(ParamFloat<px4::params::MC_YAW_TQ_CUTOFF>) _param_mc_yaw_tq_cutoff,
-		(ParamFloat<px4::params::MC_YAW_ACC_FF>) _param_mc_yaw_acc_ff,
-		(ParamInt<px4::params::MC_YAW_ID_EN>) _param_mc_yaw_id_en,
-		(ParamFloat<px4::params::MC_YAW_ID_T>) _param_mc_yaw_id_t,
-		(ParamFloat<px4::params::MC_YAW_ID_TAU>) _param_mc_yaw_id_tau,
-		(ParamFloat<px4::params::MC_YAW_ID_EXC>) _param_mc_yaw_id_exc,
-		(ParamFloat<px4::params::MC_YAW_ID_TQLIM>) _param_mc_yaw_id_tqlim,
+		(ParamInt<px4::params::MC_ACC_FF_EN>) _param_mc_acc_ff_en,
+		(ParamInt<px4::params::MC_ID_EN>) _param_mc_id_en,
+		(ParamInt<px4::params::MC_ID_CONFIRM>) _param_mc_id_confirm,
+		(ParamFloat<px4::params::MC_ID_T>) _param_mc_id_t,
+		(ParamFloat<px4::params::MC_ID_TAU>) _param_mc_id_tau,
+		(ParamFloat<px4::params::MC_ID_EXC>) _param_mc_id_exc,
+		(ParamFloat<px4::params::MC_ID_TQLIM>) _param_mc_id_tqlim,
+		(ParamFloat<px4::params::MC_ID_B_R>) _param_mc_id_b_r,
+		(ParamFloat<px4::params::MC_ID_B_P>) _param_mc_id_b_p,
+		(ParamFloat<px4::params::MC_ID_B_Y>) _param_mc_id_b_y,
+		(ParamFloat<px4::params::MC_ID_PB_R>) _param_mc_id_pb_r,
+		(ParamFloat<px4::params::MC_ID_PB_P>) _param_mc_id_pb_p,
+		(ParamFloat<px4::params::MC_ID_PB_Y>) _param_mc_id_pb_y,
+		(ParamFloat<px4::params::MC_ID_PX_R>) _param_mc_id_px_r,
+		(ParamFloat<px4::params::MC_ID_PX_P>) _param_mc_id_px_p,
+		(ParamFloat<px4::params::MC_ID_PX_Y>) _param_mc_id_px_y,
+		(ParamFloat<px4::params::MC_ID_PT_R>) _param_mc_id_pt_r,
+		(ParamFloat<px4::params::MC_ID_PT_P>) _param_mc_id_pt_p,
+		(ParamFloat<px4::params::MC_TQ_TRIM_R>) _param_mc_tq_trim_r,
+		(ParamFloat<px4::params::MC_TQ_TRIM_P>) _param_mc_tq_trim_p,
 
 		(ParamFloat<px4::params::MC_ACRO_R_MAX>) _param_mc_acro_r_max,
 		(ParamFloat<px4::params::MC_ACRO_P_MAX>) _param_mc_acro_p_max,

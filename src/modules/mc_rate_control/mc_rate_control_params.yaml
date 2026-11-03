@@ -224,73 +224,221 @@ parameters:
           it will still be 0.5 at 60% battery.
       type: boolean
       default: 0
-    MC_YAW_ACC_FF:
+    MC_ACC_FF_EN:
       description:
-        short: Yaw angular acceleration feed-forward
+        short: Angular acceleration feed-forward axes
         long: |-
-          Normalized yaw torque per rad/s^2 of yaw rate setpoint change (low-passed at 2 Hz, the result
-          limited to +-0.3). Set it to the inverse of the yaw acceleration a unit torque gives (1 / (rad/s^2)),
-          so a vehicle with a large yaw inertia starts and brakes a turn on the planned heading profile
-          instead of overshooting. 0 disables it (upstream behaviour).
-      type: float
-      default: 0.0
-      min: 0.0
-      max: 10.0
-      decimal: 2
-      increment: 0.1
-    MC_YAW_ID_EN:
+          Adds torque = (d/dt rate setpoint, 2 Hz low-pass) / MC_ID_B_x on the selected axes, limited to +-0.3,
+          so a vehicle with a large inertia starts and brakes on the planned profile. An axis with MC_ID_B_x 0
+          gets none.
+      type: bitmask
+      bit:
+        0: Roll
+        1: Pitch
+        2: Yaw
+      default: 0
+      min: 0
+      max: 7
+    MC_ID_EN:
       description:
-        short: Online identification of the yaw effectiveness
+        short: In-flight control effectiveness identification
         long: |-
-          Estimates in flight (any multicopter mode, manual included) how much yaw angular acceleration a unit
-          yaw torque gives, from the yaw torque setpoint and the measured yaw angular acceleration (scalar RLS,
-          forgetting window MC_YAW_ID_T, logged as yaw_id_status). Yaw stick inputs or turns give the excitation.
-          1: estimate and log only. 2: also use 1/estimate as the yaw acceleration feed-forward once it has
-          MC_YAW_ID_T-weighted 5 s of excitation (moving at most 20 %/s), and save it to MC_YAW_ACC_FF on landing.
+          1: estimate roll, pitch and yaw effectiveness in flight (any multicopter mode, manual included; calm air
+          gives the cleanest result) from the torque setpoint and the measured angular acceleration, and on every
+          landing save each converged axis provisionally (MC_ID_PB_x, with its excitation MC_ID_PX_x). The
+          estimate does not change the control in flight. Setting MC_ID_CONFIRM 1 on the ground copies the
+          provisional values to MC_ID_B_x, clears them and sets this parameter back to 0.
       type: enum
       values:
         0: Disabled
-        1: Estimate only
-        2: Estimate, apply and save
+        1: Estimate and save provisionally
       default: 0
-    MC_YAW_ID_T:
+    MC_ID_CONFIRM:
       description:
-        short: Forgetting window of the yaw identification
+        short: Confirm the provisional effectiveness
+        long: |-
+          Set to 1 on the ground after reviewing MC_ID_PB_x and MC_ID_PT_R/P: copies them to MC_ID_B_x and
+          MC_TQ_TRIM_R/P, clears the provisional values and
+          MC_ID_PX_x, stops the identification (MC_ID_EN 0) and resets itself to 0.
+      type: boolean
+      default: 0
+    MC_ID_T:
+      description:
+        short: Forgetting window of the identification
       type: float
       default: 20.0
       min: 1.0
       max: 600.0
       unit: s
       decimal: 1
-    MC_YAW_ID_TAU:
+    MC_ID_TAU:
       description:
-        short: Actuator time constant assumed by the yaw identification
-        long: Yaw torque reaches the airframe through the rotor speed change; the regressor is lagged by this.
+        short: Actuator time constant assumed by the identification
+        long: |-
+          The torque reaches the airframe through the rotor speed change; the regressor is lagged by this.
       type: float
       default: 0.15
       min: 0.0
       max: 1.0
       unit: s
       decimal: 3
-    MC_YAW_ID_EXC:
+    MC_ID_EXC:
       description:
-        short: Minimum band-passed yaw torque for an identification update
+        short: Minimum excitation for an identification update
+        long: Band-passed torque times the current estimate, i.e. the angular acceleration the torque should give.
       type: float
-      default: 0.01
+      default: 0.005
       min: 0.0
-      max: 0.5
-      decimal: 3
-    MC_YAW_ID_TQLIM:
+      max: 1.0
+      unit: rad/s^2
+      decimal: 4
+    MC_ID_TQLIM:
       description:
-        short: Largest yaw torque used by the yaw identification
+        short: Largest torque used by the identification
         long: |-
-          Samples with a larger yaw torque setpoint (and 0.5 s after) are skipped: rotors at idle or full
-          deliver less yaw torque than commanded, which would bias the estimate low.
+          Samples with a larger torque setpoint on any axis (and 0.5 s after) are skipped: rotors at idle or
+          full deliver less torque than commanded, which would bias the estimate low.
       type: float
       default: 0.25
       min: 0.02
       max: 1.0
       decimal: 2
+    MC_ID_B_R:
+      description:
+        short: Confirmed roll effectiveness
+        long: |-
+          Angular acceleration per unit roll torque [rad/s^2]. Used by the roll acceleration feed-forward
+          (MC_ACC_FF_EN). 0 = unknown. Written by MC_ID_CONFIRM.
+      type: float
+      default: 0.0
+      min: 0.0
+      max: 50.0
+      decimal: 3
+    MC_ID_B_P:
+      description:
+        short: Confirmed pitch effectiveness
+        long: |-
+          Angular acceleration per unit pitch torque [rad/s^2]. Used by the pitch acceleration feed-forward
+          (MC_ACC_FF_EN). 0 = unknown. Written by MC_ID_CONFIRM.
+      type: float
+      default: 0.0
+      min: 0.0
+      max: 50.0
+      decimal: 3
+    MC_ID_B_Y:
+      description:
+        short: Confirmed yaw effectiveness
+        long: |-
+          Angular acceleration per unit yaw torque [rad/s^2]. Used by the yaw acceleration feed-forward
+          (MC_ACC_FF_EN). 0 = unknown. Written by MC_ID_CONFIRM.
+      type: float
+      default: 0.0
+      min: 0.0
+      max: 50.0
+      decimal: 3
+    MC_ID_PB_R:
+      description:
+        short: Provisional roll effectiveness (identified, not confirmed)
+        long: |-
+          Written on landing by MC_ID_EN 1. 0 = none.
+      type: float
+      default: 0.0
+      min: 0.0
+      max: 50.0
+      decimal: 3
+    MC_ID_PB_P:
+      description:
+        short: Provisional pitch effectiveness (identified, not confirmed)
+        long: |-
+          Written on landing by MC_ID_EN 1. 0 = none.
+      type: float
+      default: 0.0
+      min: 0.0
+      max: 50.0
+      decimal: 3
+    MC_ID_PB_Y:
+      description:
+        short: Provisional yaw effectiveness (identified, not confirmed)
+        long: |-
+          Written on landing by MC_ID_EN 1. 0 = none.
+      type: float
+      default: 0.0
+      min: 0.0
+      max: 50.0
+      decimal: 3
+    MC_ID_PX_R:
+      description:
+        short: Excitation behind MC_ID_PB_R
+        long: |-
+          Largest forgetting-window-weighted seconds of usable excitation in the flight that wrote MC_ID_PB_R.
+      type: float
+      default: 0.0
+      min: 0.0
+      max: 1000.0
+      unit: s
+      decimal: 1
+    MC_ID_PX_P:
+      description:
+        short: Excitation behind MC_ID_PB_P
+        long: |-
+          Largest forgetting-window-weighted seconds of usable excitation in the flight that wrote MC_ID_PB_P.
+      type: float
+      default: 0.0
+      min: 0.0
+      max: 1000.0
+      unit: s
+      decimal: 1
+    MC_ID_PX_Y:
+      description:
+        short: Excitation behind MC_ID_PB_Y
+        long: |-
+          Largest forgetting-window-weighted seconds of usable excitation in the flight that wrote MC_ID_PB_Y.
+      type: float
+      default: 0.0
+      min: 0.0
+      max: 1000.0
+      unit: s
+      decimal: 1
+    MC_TQ_TRIM_R:
+      description:
+        short: Hover roll trim torque
+        long: |-
+          Normalized roll torque added from arming on, for the steady moment of a CG offset, so it is there at
+          lift-off (the rate integrator is held at zero on the ground). Written by MC_ID_CONFIRM from MC_ID_PT_R.
+      type: float
+      default: 0.0
+      min: -0.3
+      max: 0.3
+      decimal: 4
+    MC_ID_PT_R:
+      description:
+        short: Provisional hover roll trim torque (identified, not confirmed)
+        long: Trim + rate integral averaged over a quiet hover (rates < 2 deg/s, at least 10 s), written on landing.
+      type: float
+      default: 0.0
+      min: -0.3
+      max: 0.3
+      decimal: 4
+    MC_TQ_TRIM_P:
+      description:
+        short: Hover pitch trim torque
+        long: |-
+          Normalized pitch torque added from arming on, for the steady moment of a CG offset, so it is there at
+          lift-off (the rate integrator is held at zero on the ground). Written by MC_ID_CONFIRM from MC_ID_PT_P.
+      type: float
+      default: 0.0
+      min: -0.3
+      max: 0.3
+      decimal: 4
+    MC_ID_PT_P:
+      description:
+        short: Provisional hover pitch trim torque (identified, not confirmed)
+        long: Trim + rate integral averaged over a quiet hover (rates < 2 deg/s, at least 10 s), written on landing.
+      type: float
+      default: 0.0
+      min: -0.3
+      max: 0.3
+      decimal: 4
     MC_YAW_TQ_CUTOFF:
       description:
         short: Low pass filter cutoff frequency for yaw torque setpoint
