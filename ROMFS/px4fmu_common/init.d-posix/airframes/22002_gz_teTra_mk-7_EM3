@@ -302,13 +302,20 @@ param set-default MC_YAW_WEIGHT 0.3
 param set-default MC_ROLLRATE_P 0.35
 param set-default MC_PITCHRATE_P 0.35
 param set-default MC_YAWRATE_P 2.0  # rate loop ~1.2 rad/s (yaw accel ~0.58 rad/s^2 per unit torque in SITL); takeoff turn overshoot 3.7 deg, torque peak 0.10
-param set-default MC_ROLLRATE_I 0.03
-param set-default MC_PITCHRATE_I 0.03
+param set-default MC_ROLLRATE_I 0.15  # was 0.03: the integrator (held at 0 on the ground) took >10 s to build a trim
+param set-default MC_PITCHRATE_I 0.15
 param set-default MC_YAWRATE_I 0.1
-param set-default MC_ID_EN 1  # identify roll/pitch/yaw effectiveness in flight, save provisionally on landing (MC_ID_PB_x); a human confirms with MC_ID_CONFIRM
+# Control effectiveness and hover trim, identified in SITL 2026-11-04 (manual flight in calm air, MC_ID_EN 1) and
+# confirmed (MC_ID_CONFIRM): identification off. Real aircraft: MC_ID_EN 1, fly in calm air with stick inputs,
+# review MC_ID_PB_x / MC_ID_PT_x after landing, then MC_ID_CONFIRM 1.
+param set-default MC_ID_EN 0
+param set-default MC_ID_B_R 4.06
+param set-default MC_ID_B_P 4.50
+param set-default MC_TQ_TRIM_R 0.0008
+param set-default MC_TQ_TRIM_P 0.0203  # CG offset: without it the nose sagged 4-6 deg after lift-off and the aircraft drifted 8 m
 param set-default MPC_MAN_Y_MAX 20  # deg/s pilot yaw rate (upstream 150 is a small-quad value)
 param set-default MC_ACC_FF_EN 4  # angular acceleration feed-forward on yaw (bit 2)
-param set-default MC_ID_B_Y 0.556  # yaw effectiveness identified in SITL 2026-11-04 (manual flight, converged from FF 0.6 and 4.0)
+param set-default MC_ID_B_Y 0.592
 param set-default MC_ROLLRATE_D 0.035
 param set-default MC_PITCHRATE_D 0.035
 param set-default MC_YAWRATE_D 0.004
