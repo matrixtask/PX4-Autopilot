@@ -99,6 +99,7 @@ MulticopterRateControl::parameters_updated()
 				  radians(_param_mc_acro_y_max.get()));
 
 	_output_lpf_yaw.setCutoffFreq(_param_mc_yaw_tq_cutoff.get());
+	_yaw_rate_sp_dot_lpf.setCutoffFreq(2.f);
 }
 
 void
@@ -218,6 +219,19 @@ MulticopterRateControl::Run()
 			// run rate controller
 			Vector3f torque_setpoint =
 				_rate_control.update(rates, _rates_setpoint, angular_accel, dt, _maybe_landed || _landed);
+
+			// yaw acceleration feed-forward: d/dt of the yaw rate setpoint (2 Hz low-pass) x MC_YAW_ACC_FF
+			if (_param_mc_yaw_acc_ff.get() > FLT_EPSILON && dt > 1e-4f && PX4_ISFINITE(_yaw_rate_sp_prev)
+			    && _vehicle_control_mode.flag_armed && !_landed && !_maybe_landed) {
+				const float yaw_acc_sp = _yaw_rate_sp_dot_lpf.update((_rates_setpoint(2) - _yaw_rate_sp_prev) / dt, dt);
+				// bounded: a rate setpoint step (mode switch) must not kick the yaw axis
+				torque_setpoint(2) += math::constrain(_param_mc_yaw_acc_ff.get() * yaw_acc_sp, -0.3f, 0.3f);
+
+			} else {
+				_yaw_rate_sp_dot_lpf.reset(0.f);
+			}
+
+			_yaw_rate_sp_prev = _rates_setpoint(2);
 
 			// apply low-pass filtering on yaw axis to reduce high frequency torque caused by rotor acceleration
 			torque_setpoint(2) = _output_lpf_yaw.update(torque_setpoint(2), dt);

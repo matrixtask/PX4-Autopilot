@@ -134,6 +134,11 @@ private:
 
 	AlphaFilter<float> _output_lpf_yaw;
 
+	// yaw angular-acceleration feed-forward (MC_YAW_ACC_FF): torque for the acceleration the yaw rate setpoint asks
+	// for, so a large yaw inertia starts and brakes a turn on the planned profile instead of after the error builds up
+	AlphaFilter<float> _yaw_rate_sp_dot_lpf;
+	float _yaw_rate_sp_prev{NAN};
+
 	DEFINE_PARAMETERS(
 		(ParamFloat<px4::params::MC_ROLLRATE_P>) _param_mc_rollrate_p,
 		(ParamFloat<px4::params::MC_ROLLRATE_I>) _param_mc_rollrate_i,
@@ -156,6 +161,7 @@ private:
 		(ParamFloat<px4::params::MC_YAWRATE_FF>) _param_mc_yawrate_ff,
 		(ParamFloat<px4::params::MC_YAWRATE_K>) _param_mc_yawrate_k,
 		(ParamFloat<px4::params::MC_YAW_TQ_CUTOFF>) _param_mc_yaw_tq_cutoff,
+		(ParamFloat<px4::params::MC_YAW_ACC_FF>) _param_mc_yaw_acc_ff,
 
 		(ParamFloat<px4::params::MC_ACRO_R_MAX>) _param_mc_acro_r_max,
 		(ParamFloat<px4::params::MC_ACRO_P_MAX>) _param_mc_acro_p_max,

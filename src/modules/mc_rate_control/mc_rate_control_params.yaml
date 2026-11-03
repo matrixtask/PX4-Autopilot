@@ -224,6 +224,20 @@ parameters:
           it will still be 0.5 at 60% battery.
       type: boolean
       default: 0
+    MC_YAW_ACC_FF:
+      description:
+        short: Yaw angular acceleration feed-forward
+        long: |-
+          Normalized yaw torque per rad/s^2 of yaw rate setpoint change (low-passed at 2 Hz, the result
+          limited to +-0.3). Set it to the inverse of the yaw acceleration a unit torque gives (1 / (rad/s^2)),
+          so a vehicle with a large yaw inertia starts and brakes a turn on the planned heading profile
+          instead of overshooting. 0 disables it (upstream behaviour).
+      type: float
+      default: 0.0
+      min: 0.0
+      max: 10.0
+      decimal: 2
+      increment: 0.1
     MC_YAW_TQ_CUTOFF:
       description:
         short: Low pass filter cutoff frequency for yaw torque setpoint
