@@ -597,7 +597,12 @@ void FlightTaskAuto::_set_heading_from_mode()
 		// We only adjust yaw if vehicle is outside of acceptance radius. Once we enter acceptance
 		// radius, lock yaw to current yaw.
 		// This prevents excessive yawing.
-		if (v.longerThan(_target_acceptance_radius)) {
+		// A bearing to a point only a few metres away is dominated by the position drift (the takeoff or loiter
+		// point under the vehicle): hold the heading there instead. Mk-7 SITL, Takeoff mode: the nose swung
+		// 150 deg back and forth while the vehicle drifted 7 m around the takeoff point.
+		static constexpr float kMinHeadingDistance = 10.f; // [m]
+
+		if (v.longerThan(math::max(_target_acceptance_radius, kMinHeadingDistance))) {
 			if (_compute_heading_from_2D_vector(_yaw_setpoint, v)) {
 				_yaw_lock = true;
 			}

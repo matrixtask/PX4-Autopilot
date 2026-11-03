@@ -100,6 +100,11 @@ MulticopterRateControl::parameters_updated()
 
 	_output_lpf_yaw.setCutoffFreq(_param_mc_yaw_tq_cutoff.get());
 	_yaw_rate_sp_dot_lpf.setCutoffFreq(2.f);
+	_yaw_acc_ff = _param_mc_yaw_acc_ff.get();  // a parameter change (also our own save on landing) restarts from it
+	_id_u_fast.setCutoffFreq(3.f);
+	_id_y_fast.setCutoffFreq(3.f);
+	_id_u_slow.setCutoffFreq(0.2f);
+	_id_y_slow.setCutoffFreq(0.2f);
 }
 
 void
@@ -221,11 +226,11 @@ MulticopterRateControl::Run()
 				_rate_control.update(rates, _rates_setpoint, angular_accel, dt, _maybe_landed || _landed);
 
 			// yaw acceleration feed-forward: d/dt of the yaw rate setpoint (2 Hz low-pass) x MC_YAW_ACC_FF
-			if (_param_mc_yaw_acc_ff.get() > FLT_EPSILON && dt > 1e-4f && PX4_ISFINITE(_yaw_rate_sp_prev)
+			if (_yaw_acc_ff > FLT_EPSILON && dt > 1e-4f && PX4_ISFINITE(_yaw_rate_sp_prev)
 			    && _vehicle_control_mode.flag_armed && !_landed && !_maybe_landed) {
 				const float yaw_acc_sp = _yaw_rate_sp_dot_lpf.update((_rates_setpoint(2) - _yaw_rate_sp_prev) / dt, dt);
 				// bounded: a rate setpoint step (mode switch) must not kick the yaw axis
-				torque_setpoint(2) += math::constrain(_param_mc_yaw_acc_ff.get() * yaw_acc_sp, -0.3f, 0.3f);
+				torque_setpoint(2) += math::constrain(_yaw_acc_ff * yaw_acc_sp, -0.3f, 0.3f);
 
 			} else {
 				_yaw_rate_sp_dot_lpf.reset(0.f);
@@ -235,6 +240,10 @@ MulticopterRateControl::Run()
 
 			// apply low-pass filtering on yaw axis to reduce high frequency torque caused by rotor acceleration
 			torque_setpoint(2) = _output_lpf_yaw.update(torque_setpoint(2), dt);
+
+			updateYawIdentification(torque_setpoint(2), angular_accel(2), dt,
+						_vehicle_control_mode.flag_armed && !_landed && !_maybe_landed
+						&& _vehicle_status.vehicle_type == vehicle_status_s::VEHICLE_TYPE_ROTARY_WING);
 
 			// publish rate controller status
 			rate_ctrl_status_s rate_ctrl_status{};
@@ -283,6 +292,109 @@ MulticopterRateControl::Run()
 	}
 
 	perf_end(_loop_perf);
+}
+
+void MulticopterRateControl::updateYawIdentification(float torque_z, float yaw_accel, float dt, bool in_air)
+{
+	if (_param_mc_yaw_id_en.get() <= 0 || !PX4_ISFINITE(torque_z) || !PX4_ISFINITE(yaw_accel)) {
+		return;
+	}
+
+	static constexpr float P0 = 100.f;	// initial / maximum covariance
+	static constexpr float kMinExcitation = 5.f;	// [s] of usable excitation before the estimate is trusted
+
+	if (!PX4_ISFINITE(_id_b)) {
+		const float ff = _param_mc_yaw_acc_ff.get();
+		_id_b = ff > 0.05f ? 1.f / ff : 1.f;	// start from the configured feed-forward
+		_id_p = P0;
+	}
+
+	// on landing: keep a converged estimate as the new MC_YAW_ACC_FF (EN = 2)
+	// (the excitation decays during the quiet landing, so "converged at some time in this flight" counts)
+	if (_id_was_in_air && !in_air && _param_mc_yaw_id_en.get() == 2 && _id_flight_converged) {
+		const float ff = math::constrain(1.f / _id_b, 0.1f, 10.f);
+		_param_mc_yaw_acc_ff.set(ff);
+		_param_mc_yaw_acc_ff.commit_no_notification();
+		PX4_INFO("yaw effectiveness %.3f rad/s^2 per unit torque -> MC_YAW_ACC_FF %.2f saved", (double)_id_b, (double)ff);
+	}
+
+	if (!_id_was_in_air && in_air) {
+		_id_flight_converged = false;
+	}
+
+	_id_was_in_air = in_air;
+
+	if (!in_air) {
+		_id_tq_lag = torque_z;
+		_id_u_fast.reset(0.f);
+		_id_u_slow.reset(0.f);
+		_id_y_fast.reset(0.f);
+		_id_y_slow.reset(0.f);
+		return;
+	}
+
+	// torque through the actuator lag (motor speed time constant), then the same band-pass on both signals
+	const float tau = math::max(_param_mc_yaw_id_tau.get(), 0.f);
+	_id_tq_lag += (torque_z - _id_tq_lag) * dt / (tau + dt);
+	const float u = _id_u_fast.update(_id_tq_lag, dt) - _id_u_slow.update(_id_tq_lag, dt);
+	const float y = _id_y_fast.update(yaw_accel, dt) - _id_y_slow.update(yaw_accel, dt);
+
+	const float window = math::max(_param_mc_yaw_id_t.get(), 1.f);
+	_id_excitation_s *= expf(-dt / window);
+
+	// Only the linear range: beyond MC_YAW_ID_TQLIM rotors reach idle/full and the yaw torque is no longer delivered
+	// (SITL Mk-7: rotors at 0 above ~0.3; using those samples halved the estimate and doubled the feed-forward,
+	// which asked for even more torque).
+	const float tq_lim = _param_mc_yaw_id_tqlim.get();
+	const bool linear = fabsf(torque_z) < tq_lim && fabsf(_id_tq_lag) < tq_lim;
+
+	if (!linear) {
+		_id_sat_hold = 0.5f;  // and a moment after, while the band-pass still carries the saturated part
+
+	} else if (_id_sat_hold > 0.f) {
+		_id_sat_hold -= dt;
+	}
+
+	if (fabsf(u) > _param_mc_yaw_id_exc.get() && linear && _id_sat_hold <= 0.f) {
+		// scalar RLS with forgetting (only while excited, so the covariance does not wind up in a hover)
+		const float lambda = expf(-dt / window);
+		const float k = _id_p * u / (1.f + _id_p * u * u);
+		const float b_new = _id_b + k * (y - _id_b * u);
+		_id_p = math::min((1.f - k * u) * _id_p / lambda, P0);
+
+		if (b_new > 0.02f && b_new < 50.f) {	// physically possible effectiveness only
+			_id_b = b_new;
+			_id_excitation_s += dt;
+		}
+	}
+
+	const bool converged = _id_excitation_s >= kMinExcitation;
+	_id_flight_converged |= converged;
+	const float ff_est = math::constrain(1.f / _id_b, 0.1f, 10.f);
+
+	if (_param_mc_yaw_id_en.get() == 2 && converged) {
+		// move the gain in use towards the estimate, at most 20 % of it per second
+		const float step = 0.2f * ff_est * dt;
+		_yaw_acc_ff += math::constrain(ff_est - _yaw_acc_ff, -step, step);
+	}
+
+	const hrt_abstime now = hrt_absolute_time();
+
+	if (now - _id_last_pub > 50_ms) {
+		yaw_id_status_s st{};
+		st.active = in_air;
+		st.converged = converged;
+		st.b_est = _id_b;
+		st.b_var = _id_p;
+		st.excitation_s = _id_excitation_s;
+		st.ff_est = ff_est;
+		st.ff_applied = _yaw_acc_ff;
+		st.u_bp = u;
+		st.y_bp = y;
+		st.timestamp = now;
+		_yaw_id_status_pub.publish(st);
+		_id_last_pub = now;
+	}
 }
 
 void MulticopterRateControl::updateActuatorControlsStatus(const vehicle_torque_setpoint_s &vehicle_torque_setpoint,

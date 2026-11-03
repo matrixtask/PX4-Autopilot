@@ -238,6 +238,59 @@ parameters:
       max: 10.0
       decimal: 2
       increment: 0.1
+    MC_YAW_ID_EN:
+      description:
+        short: Online identification of the yaw effectiveness
+        long: |-
+          Estimates in flight (any multicopter mode, manual included) how much yaw angular acceleration a unit
+          yaw torque gives, from the yaw torque setpoint and the measured yaw angular acceleration (scalar RLS,
+          forgetting window MC_YAW_ID_T, logged as yaw_id_status). Yaw stick inputs or turns give the excitation.
+          1: estimate and log only. 2: also use 1/estimate as the yaw acceleration feed-forward once it has
+          MC_YAW_ID_T-weighted 5 s of excitation (moving at most 20 %/s), and save it to MC_YAW_ACC_FF on landing.
+      type: enum
+      values:
+        0: Disabled
+        1: Estimate only
+        2: Estimate, apply and save
+      default: 0
+    MC_YAW_ID_T:
+      description:
+        short: Forgetting window of the yaw identification
+      type: float
+      default: 20.0
+      min: 1.0
+      max: 600.0
+      unit: s
+      decimal: 1
+    MC_YAW_ID_TAU:
+      description:
+        short: Actuator time constant assumed by the yaw identification
+        long: Yaw torque reaches the airframe through the rotor speed change; the regressor is lagged by this.
+      type: float
+      default: 0.15
+      min: 0.0
+      max: 1.0
+      unit: s
+      decimal: 3
+    MC_YAW_ID_EXC:
+      description:
+        short: Minimum band-passed yaw torque for an identification update
+      type: float
+      default: 0.01
+      min: 0.0
+      max: 0.5
+      decimal: 3
+    MC_YAW_ID_TQLIM:
+      description:
+        short: Largest yaw torque used by the yaw identification
+        long: |-
+          Samples with a larger yaw torque setpoint (and 0.5 s after) are skipped: rotors at idle or full
+          deliver less yaw torque than commanded, which would bias the estimate low.
+      type: float
+      default: 0.25
+      min: 0.02
+      max: 1.0
+      decimal: 2
     MC_YAW_TQ_CUTOFF:
       description:
         short: Low pass filter cutoff frequency for yaw torque setpoint

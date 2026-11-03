@@ -305,6 +305,8 @@ param set-default MC_YAWRATE_P 2.0  # rate loop ~1.2 rad/s (yaw accel ~0.58 rad/
 param set-default MC_ROLLRATE_I 0.03
 param set-default MC_PITCHRATE_I 0.03
 param set-default MC_YAWRATE_I 0.1
+param set-default MC_YAW_ID_EN 2  # re-identify the yaw effectiveness in flight (manual included), use it, save it on landing
+param set-default MPC_MAN_Y_MAX 20  # deg/s pilot yaw rate (upstream 150 is a small-quad value)
 param set-default MC_YAW_ACC_FF 1.7  # 1 / (0.6 rad/s^2 per unit yaw torque, SITL log): torque for the planned yaw acceleration
 param set-default MC_ROLLRATE_D 0.035
 param set-default MC_PITCHRATE_D 0.035
@@ -312,7 +314,7 @@ param set-default MC_YAWRATE_D 0.004
 param set-default MC_ROLLRATE_K 1.0
 param set-default MC_PITCHRATE_K 1.0
 param set-default MC_YAWRATE_K 1.0
-param set-default MC_YAWRATE_MAX 25  # headroom above MPC_YAWRAUTO_MAX for the angle loop
+param set-default MC_YAWRATE_MAX 30  # headroom above MPC_YAWRAUTO_MAX / MPC_MAN_Y_MAX for the angle loop
 
 # Mission and position control
 param set-default MIS_TAKEOFF_ALT 30
@@ -437,7 +439,7 @@ param set-default FW_R_RMAX 15  # deg/s roll-rate limit (comfort; 8 was too slow
 param set-default FW_P_RMAX_POS 10  # deg/s
 param set-default FW_P_RMAX_NEG 10  # deg/s
 param set-default NPFG_PERIOD 30  # with FW_R_LIM 15 / period 20 the turn at Sasu became a +-15 deg bang-bang weave (HQ01 run 3)
-param set-default MPC_YAWRAUTO_MAX 15  # deg/s (Tasuku 2026-11-03: a crisp turn); was 6 because the slow yaw loop overshot (see MC_YAW_ACC_FF)
+param set-default MPC_YAWRAUTO_MAX 20  # deg/s (Tasuku 2026-11-04: 20 OK); braking by MC_YAW_ACC_FF
 param set-default MPC_JERK_AUTO 0.5
 param set-default MPC_ACC_UP_MAX 2.0
 param set-default MPC_ACC_DOWN_MAX 1.5

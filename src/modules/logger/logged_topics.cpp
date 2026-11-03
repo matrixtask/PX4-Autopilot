@@ -153,6 +153,7 @@ void LoggedTopics::add_default_topics()
 	add_topic("vtx");
 	add_optional_topic("vtol_vehicle_status", 200);
 	add_topic("upset_recovery_status", 20);
+	add_topic("yaw_id_status", 20);
 	add_topic("vtol_brake_setpoint", 100); // published only during back transitions: optional topics are added at start only
 	add_topic("landing_surface", 100);
 	add_topic("wind", 1000);
