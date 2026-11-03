@@ -126,6 +126,7 @@ private:
 	control_allocator_status_s _ca_status[2] {};
 	uORB::Subscription _upset_status_sub{ORB_ID(upset_recovery_status)};
 	float _rd_collective{0.f};	///< lift-rotor up-thrust for the redistributed differential [0, 1]
+	float _rd_pitch{0.f};		///< [rad] pitch feed-forward for the lift of that collective
 	hrt_abstime _rd_last_excess{0};
 	hrt_abstime _rd_time{0};
 

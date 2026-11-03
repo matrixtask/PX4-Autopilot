@@ -396,9 +396,25 @@ void Standard::update_fw_state()
 		_ccv_pitch -= _ccv_pitch * dt / kCcvWashoutTimeConstant;
 	}
 
-	if (fabsf(_ccv_pitch) > 1e-4f) {
+	// Same feed-forward for the lift the rotors add while they carry a redistributed torque (VT_RD_EN): both rotor
+	// groups run at the collective the differential needs, which lifts the aircraft. Lower the pitch by the angle of
+	// attack that lift replaces, so the wing sheds it at once instead of the TECS height loop seeing a climb.
+	// Only with the lift vector up (|roll| < 60 deg): in an upset the recovery attitude overrides this anyway.
+	_rd_pitch = 0.f;
+
+	if (_rd_collective > 0.f) {
+		const Eulerf att{Quatf(_v_att->q)};
+
+		if (fabsf(att.phi()) < math::radians(60.f)) {
+			const float cas = PX4_ISFINITE(_cas_schedule) ? math::max(_cas_schedule, 0.5f * v_wing) : v_wing;
+			const float rotor_share = math::constrain(_rd_collective / hover, 0.f, 1.f);
+			_rd_pitch = -aoa * rotor_share * (v_wing / cas) * (v_wing / cas);
+		}
+	}
+
+	if (fabsf(_ccv_pitch + _rd_pitch) > 1e-4f) {
 		Eulerf euler{Quatf(_v_att_sp->q_d)};
-		euler.theta() += _ccv_pitch;
+		euler.theta() += _ccv_pitch + _rd_pitch;
 		Quatf(euler).copyTo(_v_att_sp->q_d);
 	}
 }
