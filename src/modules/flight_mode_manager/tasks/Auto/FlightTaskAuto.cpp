@@ -178,11 +178,14 @@ bool FlightTaskAuto::update()
 		waypoints[2] = _position_setpoint;
 	}
 
-	// Yaw-first holds the vehicle while it turns before a horizontal move. A takeoff is a vertical move: let it
-	// climb while turning (navigator MIS_TKO_YAW_NX turns to the first leg during the climb; holding the climb
-	// stopped Mk-7 EM3 at 8 m for 8 s).
+	// Yaw-first holds the vehicle while it turns before a horizontal move. A takeoff, or any move that is mostly
+	// vertical (the mission's climb before the first item is a loiter setpoint straight above), is not: let it climb
+	// while turning (navigator MIS_TKO_YAW_NX turns to the first leg during the climb). Holding the climb stopped
+	// Mk-7 EM3 at 13 m for 24 s in HQ01 while the heading swung after the drifting bearing to the point above.
+	const Vector3f to_target = _position_setpoint - _position;
+	const bool vertical_move = PX4_ISFINITE(to_target(2)) && fabsf(to_target(2)) > Vector2f(to_target).norm();
 	const bool should_wait_for_yaw_align = _param_mpc_yaw_mode.get() == int32_t(yaw_mode::towards_waypoint_yaw_first)
-					       && !_yaw_sp_aligned && _type != WaypointType::takeoff;
+					       && !_yaw_sp_aligned && _type != WaypointType::takeoff && !vertical_move;
 	const bool force_zero_velocity_setpoint = should_wait_for_yaw_align || _is_emergency_braking_active;
 	_updateTrajConstraints();
 	PositionSmoothing::PositionSmoothingSetpoints smoothed_setpoints;

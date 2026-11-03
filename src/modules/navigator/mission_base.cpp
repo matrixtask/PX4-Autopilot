@@ -1591,8 +1591,12 @@ void MissionBase::updateTakeoffHeading()
 {
 	// Upstream: the takeoff climb holds the heading and the vehicle turns on the spot before the transition
 	// (MIS_YAW_ERR). With MIS_TKO_YAW_NX the turn happens during the climb instead, towards the first leg.
+	// The climb before the first item is a TAKEOFF when the land detector still reports landed, otherwise a
+	// LOITER_TO_ALT straight above (HQ01: always the latter, so the turn never happened and yaw-first swung the nose
+	// after the bearing to the point overhead).
 	const bool climbing = _work_item_type == WorkItemType::WORK_ITEM_TYPE_CLIMB
-			      && (_mission_item.nav_cmd == NAV_CMD_TAKEOFF || _mission_item.nav_cmd == NAV_CMD_VTOL_TAKEOFF);
+			      && (_mission_item.nav_cmd == NAV_CMD_TAKEOFF || _mission_item.nav_cmd == NAV_CMD_VTOL_TAKEOFF
+				  || _mission_item.nav_cmd == NAV_CMD_LOITER_TO_ALT);
 
 	if (!_param_mis_tko_yaw_nx.get() || !climbing || !_vehicle_status_sub.get().is_vtol
 	    || _vehicle_status_sub.get().vehicle_type != vehicle_status_s::VEHICLE_TYPE_ROTARY_WING) {
