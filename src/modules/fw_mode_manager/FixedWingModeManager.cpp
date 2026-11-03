@@ -749,9 +749,17 @@ FixedWingModeManager::handle_setpoint_type(const position_setpoint_s &pos_sp_cur
 	// Glide path (FW_WP_GLIDE): the next leg continues the climb or descent the vehicle is still behind on, so the
 	// remaining altitude error is flown off along it. Circling at the waypoint to reach its altitude first (below) put
 	// the vehicle into a 26 deg bank, 270 m off track at the steep arrival-zone legs (HQ01 v8/v9: 33 m high).
-	const bool glide_continues = _param_fw_wp_glide.get() && _position_setpoint_next_valid
+	// The same while climbing (NAV_FW_CLB_RAD, navigator accepts the waypoint with that shortfall): below the
+	// waypoint, the next one at least as high, so the climb is finished along the next leg (14 km test run: one
+	// full orbit at the top of climb, the wing-borne climb is ~2 m/s against a plan of 7 m/s).
+	const bool climb_continues = _param_nav_fw_clb_rad.get() > FLT_EPSILON && _position_setpoint_next_valid
 				     && pos_sp_next.type == position_setpoint_s::SETPOINT_TYPE_POSITION
-				     && ((pos_sp_next.alt - pos_sp_curr.alt) * (pos_sp_curr.alt - _current_altitude) > 0.f);
+				     && pos_sp_next.alt >= pos_sp_curr.alt && _current_altitude < pos_sp_curr.alt
+				     && pos_sp_curr.alt - _current_altitude <= _param_nav_fw_clb_rad.get();
+	const bool glide_continues = (_param_fw_wp_glide.get() && _position_setpoint_next_valid
+				      && pos_sp_next.type == position_setpoint_s::SETPOINT_TYPE_POSITION
+				      && ((pos_sp_next.alt - pos_sp_curr.alt) * (pos_sp_curr.alt - _current_altitude) > 0.f))
+				     || climb_continues;
 
 	// check if we should switch to loiter but only if we are not expecting a backtransition to happen
 	if (pos_sp_curr.type == position_setpoint_s::SETPOINT_TYPE_POSITION && !approaching_vtol_backtransition

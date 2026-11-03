@@ -441,6 +441,7 @@ private:
 		(ParamFloat<px4::params::NAV_LOITER_RAD>)   _param_nav_loiter_rad,	/**< loiter radius for fixedwing */
 		(ParamFloat<px4::params::NAV_ACC_RAD>)      _param_nav_acc_rad,		/**< acceptance for takeoff */
 		(ParamFloat<px4::params::NAV_FW_ALT_RAD>)   _param_nav_fw_alt_rad,	/**< acceptance rad for fixedwing alt */
+		(ParamFloat<px4::params::NAV_FW_CLB_RAD>)   _param_nav_fw_clb_rad,	/**< FW alt acceptance while the climb continues */
 		(ParamFloat<px4::params::NAV_FW_ALTL_RAD>)
 		_param_nav_fw_altl_rad,	/**< acceptance rad for fixedwing alt before landing*/
 		(ParamFloat<px4::params::NAV_MC_ALT_RAD>)   _param_nav_mc_alt_rad,	/**< acceptance rad for multicopter alt */

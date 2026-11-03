@@ -554,3 +554,7 @@ param set-default FW_INDI_G_P 0.0032
 param set-default FW_INDI_K_R 4.0
 param set-default FW_INDI_K_P 4.0
 param set-default FW_INDI_TACT 0.1
+# Climb legs (2026-11-03): the wing-borne climb is ~2 m/s at full pusher. A waypoint reached up to 100 m low while the
+# next one is at least as high is accepted and the climb finished along the next leg, instead of an orbit at the
+# waypoint (14 km test run). Missions plan the climb with the measured rate so the shortfall stays small.
+param set-default NAV_FW_CLB_RAD 100

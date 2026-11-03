@@ -41,6 +41,22 @@ parameters:
       max: 200.0
       decimal: 1
       increment: 0.5
+    NAV_FW_CLB_RAD:
+      description:
+        short: FW altitude acceptance while the climb continues on the next leg
+        long: |-
+          Altitude acceptance used instead of NAV_FW_ALT_RAD when the vehicle is below the waypoint and the next
+          waypoint is at least as high (the climb continues on the next leg). The vehicle then flies on and finishes
+          the climb along the next leg instead of circling at the waypoint. The mission must stay clear of the
+          terrain with this shortfall (plan the climb with the climb rate the aircraft really reaches).
+          0 disables (NAV_FW_ALT_RAD everywhere).
+      type: float
+      default: 0.0
+      unit: m
+      min: 0.0
+      max: 500.0
+      decimal: 0
+      increment: 5
     NAV_FW_ALTL_RAD:
       description:
         short: FW Altitude Acceptance Radius before a landing

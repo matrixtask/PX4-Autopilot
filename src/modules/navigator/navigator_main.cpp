@@ -1153,6 +1153,12 @@ float Navigator::get_altitude_acceptance_radius()
 			// Use separate (tighter) altitude acceptance for clean altitude starting point before FW landing
 			return _param_nav_fw_altl_rad.get();
 
+		} else if (_param_nav_fw_clb_rad.get() > _param_nav_fw_alt_rad.get() && next_sp.valid
+			   && next_sp.type == position_setpoint_s::SETPOINT_TYPE_POSITION && next_sp.alt >= curr_sp.alt
+			   && PX4_ISFINITE(get_global_position()->alt) && get_global_position()->alt < curr_sp.alt) {
+			// below the waypoint and the climb continues on the next leg: fly on and finish the climb there
+			return _param_nav_fw_clb_rad.get();
+
 		} else {
 			return _param_nav_fw_alt_rad.get();
 		}
