@@ -55,6 +55,7 @@
 #include <uORB/topics/rate_ctrl_status.h>
 #include <uORB/topics/vehicle_angular_velocity.h>
 #include <uORB/topics/vehicle_control_mode.h>
+#include <uORB/topics/takeoff_status.h>
 #include <uORB/topics/vehicle_land_detected.h>
 #include <uORB/topics/vehicle_rates_setpoint.h>
 #include <uORB/topics/vehicle_status.h>
@@ -100,6 +101,11 @@ private:
 	uORB::Subscription _manual_control_setpoint_sub{ORB_ID(manual_control_setpoint)};
 	uORB::Subscription _vehicle_control_mode_sub{ORB_ID(vehicle_control_mode)};
 	uORB::Subscription _vehicle_land_detected_sub{ORB_ID(vehicle_land_detected)};
+	uORB::Subscription _takeoff_status_sub{ORB_ID(takeoff_status)};
+	bool _standing{false};
+	bool _rampup_after_stand{false};	///< takeoff ramp following the stand phase
+	matrix::Vector2f _stand_integral{};	///< roll/pitch rate integral at the end of the stand phase
+	float _stand_thrust{0.f};		///< collective thrust at the end of the stand phase	///< takeoff stand phase: on the main gear, attitude loop active, integrator learning
 	uORB::Subscription _vehicle_rates_setpoint_sub{ORB_ID(vehicle_rates_setpoint)};
 	uORB::Subscription _vehicle_status_sub{ORB_ID(vehicle_status)};
 
@@ -160,6 +166,8 @@ private:
 	bool _id_was_in_air{false};
 	hrt_abstime _id_last_pub{0};
 	orb_advert_t _mavlink_log_pub{nullptr};
+	param_t _param_mpc_thr_hover_id{param_find("MPC_THR_HOVER")};
+	float _thr_hover{0.5f};
 	uORB::Publication<effectiveness_id_status_s> _effectiveness_id_status_pub{ORB_ID(effectiveness_id_status)};
 
 	DEFINE_PARAMETERS(

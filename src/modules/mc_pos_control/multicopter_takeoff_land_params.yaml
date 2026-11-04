@@ -14,6 +14,56 @@ parameters:
       unit: s
       min: 0
       max: 5
+    MPC_TKO_STD_THR:
+      description:
+        short: Stand-on-main-gear thrust before lift-off (fraction of hover thrust)
+        long: |-
+          For a vehicle that rests tilted (Mk-7: nose gear shorter). Before the takeoff ramp the attitude is held
+          level while the thrust ramps to this fraction of the hover thrust in MPC_TKO_STD_T, so the vehicle stands
+          on its main gear and the rate integrator takes the CG moment. When level within MPC_TKO_STD_TOL for
+          MPC_TKO_STD_HLD the normal ramp continues from this thrust (position hold, integrator kept). Not level
+          after MPC_TKO_STD_TMO: takeoff aborted until disarmed. 0 disables (upstream takeoff).
+      type: float
+      default: 0.0
+      min: 0.0
+      max: 0.95
+      decimal: 2
+    MPC_TKO_STD_T:
+      description:
+        short: Thrust ramp time of the stand phase
+      type: float
+      default: 3.0
+      unit: s
+      min: 0.0
+      max: 20.0
+      decimal: 1
+    MPC_TKO_STD_TOL:
+      description:
+        short: Level tolerance (roll and pitch) to end the stand phase
+      type: float
+      default: 0.5
+      unit: deg
+      min: 0.1
+      max: 5.0
+      decimal: 1
+    MPC_TKO_STD_HLD:
+      description:
+        short: Time level within MPC_TKO_STD_TOL to end the stand phase
+      type: float
+      default: 0.5
+      unit: s
+      min: 0.0
+      max: 5.0
+      decimal: 1
+    MPC_TKO_STD_TMO:
+      description:
+        short: Stand phase timeout (takeoff aborted)
+      type: float
+      default: 15.0
+      unit: s
+      min: 3.0
+      max: 60.0
+      decimal: 1
     MPC_TKO_SPEED:
       description:
         short: Takeoff climb rate

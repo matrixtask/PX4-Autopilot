@@ -317,7 +317,8 @@ bool MulticopterLandDetector::_get_ground_effect_state()
 {
 	return (_in_descend && !_horizontal_movement) ||
 	       (_below_gnd_effect_hgt && _takeoff_state == takeoff_status_s::TAKEOFF_STATE_FLIGHT) ||
-	       _takeoff_state == takeoff_status_s::TAKEOFF_STATE_RAMPUP;
+	       _takeoff_state == takeoff_status_s::TAKEOFF_STATE_RAMPUP
+	       || _takeoff_state == takeoff_status_s::TAKEOFF_STATE_STAND;
 }
 
 bool MulticopterLandDetector::_is_close_to_ground()

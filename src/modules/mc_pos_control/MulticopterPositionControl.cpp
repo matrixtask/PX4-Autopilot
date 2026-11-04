@@ -35,6 +35,7 @@
 
 #include <float.h>
 #include <lib/mathlib/mathlib.h>
+#include <lib/geo/geo.h>
 #include <lib/matrix/matrix/math.hpp>
 #include <px4_platform_common/events.h>
 #include "PositionControl/ControlMath.hpp"
@@ -305,6 +306,7 @@ void MulticopterPositionControl::parameters_update(bool force)
 
 		_takeoff.setSpoolupTime(_param_com_spoolup_time.get());
 		_takeoff.setTakeoffRampTime(_param_mpc_tko_ramp_t.get());
+		_takeoff.setStandEnabled(_param_mpc_tko_std_thr.get() > FLT_EPSILON);
 		_takeoff.generateInitialRampValue(_param_mpc_z_vel_p_acc.get());
 	}
 }
@@ -375,6 +377,60 @@ PositionControlStates MulticopterPositionControl::set_vehicle_states(const vehic
 	states.yaw = vehicle_local_position.heading;
 
 	return states;
+}
+
+void MulticopterPositionControl::updateStand(const hrt_abstime &now, trajectory_setpoint_s &setpoint)
+{
+	// Mk-7 rests nose-down (nose gear shorter); lifting off from that attitude tilts the thrust forward and the
+	// rate integrator (held at zero on the ground) has nothing learnt. Instead: level attitude on the main gear with
+	// the thrust ramped below lift-off, so the attitude loop and its integrator take the CG moment, then the
+	// normal ramp continues from that thrust (Veronte PDI V3-2 G -> T).
+	vehicle_attitude_s att{};
+	_vehicle_attitude_sub.copy(&att);
+	const matrix::Eulerf euler{matrix::Quatf{att.q}};
+
+	if (!_stand_active) {
+		_stand_active = true;
+		_stand_start = now;
+		_stand_level_since = 0;
+		_stand_yaw = euler.psi();
+		mavlink_log_info(&_mavlink_log_pub, "Takeoff: standing on the main gear\t");
+	}
+
+	const float t = (now - _stand_start) * 1e-6f;
+	const float ramp = (_param_mpc_tko_std_t.get() > FLT_EPSILON) ? math::min(t / _param_mpc_tko_std_t.get(), 1.f) : 1.f;
+	_stand_thrust = ramp * _param_mpc_tko_std_thr.get();
+
+	// level attitude, no position / velocity control, thrust = f x hover thrust (acceleration g (1 - f) down)
+	setpoint = PositionControl::empty_trajectory_setpoint;
+	setpoint.timestamp = now;
+	setpoint.acceleration[0] = 0.f;
+	setpoint.acceleration[1] = 0.f;
+	setpoint.acceleration[2] = CONSTANTS_ONE_G * (1.f - _stand_thrust);
+	setpoint.yaw = _stand_yaw;
+
+	const float tol = math::radians(_param_mpc_tko_std_tol.get());
+	const bool level = fabsf(euler.phi()) < tol && fabsf(euler.theta()) < tol;
+
+	if (!level || ramp < 1.f) {
+		_stand_level_since = 0;
+
+	} else if (_stand_level_since == 0) {
+		_stand_level_since = now;
+	}
+
+	if (_stand_level_since != 0 && now - _stand_level_since > _param_mpc_tko_std_hld.get() * 1_s) {
+		_takeoff.standComplete(_stand_thrust, _param_mpc_z_vel_p_acc.get(), _param_mpc_tko_speed.get());
+		_stand_thrust_floor = _stand_thrust * _param_mpc_thr_hover.get();
+		mavlink_log_info(&_mavlink_log_pub, "Takeoff: level on the main gear after %.1f s, lift-off\t", (double)t);
+		_stand_active = false;
+
+	} else if (t > _param_mpc_tko_std_tmo.get()) {
+		_takeoff.standFailed();
+		mavlink_log_critical(&_mavlink_log_pub, "Takeoff aborted: not level on the main gear (pitch %.1f deg)\t",
+				     (double)math::degrees(euler.theta()));
+		_stand_active = false;
+	}
 }
 
 void MulticopterPositionControl::Run()
@@ -499,7 +555,8 @@ void MulticopterPositionControl::Run()
 						    _vehicle_constraints.want_takeoff,
 						    _vehicle_constraints.speed_up, skip_takeoff, vehicle_local_position.timestamp_sample);
 
-			const bool not_taken_off             = (_takeoff.getTakeoffState() < TakeoffState::rampup);
+			const bool standing                  = (_takeoff.getTakeoffState() == TakeoffState::stand);
+			const bool not_taken_off             = (_takeoff.getTakeoffState() < TakeoffState::rampup) && !standing;
 			const bool flying                    = (_takeoff.getTakeoffState() >= TakeoffState::flight);
 			const bool flying_but_ground_contact = (flying && _vehicle_land_detected.ground_contact);
 
@@ -522,6 +579,14 @@ void MulticopterPositionControl::Run()
 				_control.resetIntegral();
 			}
 
+			if (standing) {
+				updateStand(vehicle_local_position.timestamp_sample, _setpoint);
+				_control.resetIntegral();
+
+			} else {
+				_stand_active = false;
+			}
+
 			// limit tilt during takeoff ramupup
 			const float tilt_limit_deg = (_takeoff.getTakeoffState() < TakeoffState::flight)
 						     ? _param_mpc_tiltmax_lnd.get() : _param_mpc_tiltmax_air.get();
@@ -533,7 +598,17 @@ void MulticopterPositionControl::Run()
 						 _param_mpc_z_vel_max_dn.get();
 
 			// Allow ramping from zero thrust on takeoff
-			const float minimum_thrust = flying ? _param_mpc_thr_min.get() : 0.f;
+			float minimum_thrust = flying ? _param_mpc_thr_min.get() : 0.f;
+
+			// after standing on the main gear the ramp must not drop below the stand thrust (SITL: it dipped from
+			// 86 % to 70 % of hover when the ramp took over and the nose fell 3 deg back onto the nose gear)
+			if (_takeoff.getTakeoffState() == TakeoffState::rampup && _stand_thrust_floor > 0.f) {
+				minimum_thrust = math::max(minimum_thrust, _stand_thrust_floor);
+
+			} else if (_takeoff.getTakeoffState() != TakeoffState::rampup && _takeoff.getTakeoffState() != TakeoffState::stand) {
+				_stand_thrust_floor = 0.f;  // (kept from the stand phase, set there in the cycle it completes)
+			}
+
 			_control.setThrustLimits(minimum_thrust, _param_mpc_thr_max.get());
 
 			float max_speed_xy = _param_mpc_xy_vel_max.get();

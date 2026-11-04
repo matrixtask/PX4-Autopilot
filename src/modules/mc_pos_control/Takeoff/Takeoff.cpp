@@ -70,12 +70,34 @@ void TakeoffHandling::updateTakeoffState(const bool armed, const bool landed, co
 
 	// FALLTHROUGH
 	case TakeoffState::ready_for_takeoff:
-		if (want_takeoff) {
-			_takeoff_state = TakeoffState::rampup;
+		if (want_takeoff && !_stand_failed) {
 			_takeoff_ramp_progress = 0.f;
+
+			if (_stand_enabled) {
+				_takeoff_state = TakeoffState::stand;
+				_stand_done = false;
+				break;
+			}
+
+			_takeoff_state = TakeoffState::rampup;
 
 		} else {
 			break;
+		}
+
+	// FALLTHROUGH
+	case TakeoffState::stand:
+		if (_takeoff_state == TakeoffState::stand) {
+			if (_stand_failed || !want_takeoff) {
+				_takeoff_state = TakeoffState::ready_for_takeoff;
+				break;
+			}
+
+			if (!_stand_done) {
+				break;
+			}
+
+			_takeoff_state = TakeoffState::rampup;  // ramp progress set by standComplete()
 		}
 
 	// FALLTHROUGH
@@ -106,7 +128,19 @@ void TakeoffHandling::updateTakeoffState(const bool armed, const bool landed, co
 	// TODO: need to consider free fall here
 	if (!armed) {
 		_takeoff_state = TakeoffState::disarmed;
+		_stand_failed = false;
 	}
+}
+
+void TakeoffHandling::standComplete(float thrust_fraction_of_hover, float velocity_p_gain, float takeoff_desired_vz)
+{
+	// continue the ramp from the thrust held while standing instead of from zero: the vertical velocity limit that
+	// gives this thrust at rest is -g (1 - f) / K (the ramp starts at -g / K = zero thrust)
+	velocity_p_gain = math::max(velocity_p_gain, 0.01f);
+	const float vz_f = -CONSTANTS_ONE_G * (1.f - math::constrain(thrust_fraction_of_hover, 0.f, 1.f)) / velocity_p_gain;
+	const float span = takeoff_desired_vz - _takeoff_ramp_vz_init;
+	_takeoff_ramp_progress = (span > FLT_EPSILON) ? math::constrain((vz_f - _takeoff_ramp_vz_init) / span, 0.f, 0.99f) : 0.f;
+	_stand_done = true;
 }
 
 float TakeoffHandling::updateRamp(const float dt, const float takeoff_desired_vz)

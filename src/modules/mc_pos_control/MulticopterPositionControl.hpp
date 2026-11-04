@@ -61,6 +61,7 @@
 #include <uORB/topics/hover_thrust_estimate.h>
 #include <uORB/topics/parameter_update.h>
 #include <uORB/topics/trajectory_setpoint.h>
+#include <uORB/topics/vehicle_attitude.h>
 #include <uORB/topics/vehicle_attitude_setpoint.h>
 #include <uORB/topics/vehicle_constraints.h>
 #include <uORB/topics/vehicle_control_mode.h>
@@ -110,6 +111,16 @@ private:
 	uORB::Subscription _vehicle_constraints_sub{ORB_ID(vehicle_constraints)};
 	uORB::Subscription _vehicle_control_mode_sub{ORB_ID(vehicle_control_mode)};
 	uORB::Subscription _vehicle_land_detected_sub{ORB_ID(vehicle_land_detected)};
+	uORB::Subscription _vehicle_attitude_sub{ORB_ID(vehicle_attitude)};
+
+	// Stand on the main gear before lift-off (MPC_TKO_STD_*): level attitude, thrust ramped to MPC_TKO_STD_THR x hover
+	void updateStand(const hrt_abstime &now, trajectory_setpoint_s &setpoint);
+	bool _stand_active{false};
+	hrt_abstime _stand_start{0};
+	hrt_abstime _stand_level_since{0};
+	float _stand_yaw{NAN};
+	float _stand_thrust{0.f};
+	float _stand_thrust_floor{0.f};	///< collective thrust held while standing: floor for the following ramp
 
 	hrt_abstime _time_stamp_last_loop{0};		/**< time stamp of last loop iteration */
 	hrt_abstime _time_position_control_enabled{0};
@@ -162,6 +173,11 @@ private:
 		(ParamBool<px4::params::COM_THROW_EN>)      _param_com_throw_en, /**< throw launch enabled  */
 		(ParamFloat<px4::params::MPC_TKO_RAMP_T>)   _param_mpc_tko_ramp_t,   /**< time constant for smooth takeoff ramp */
 		(ParamFloat<px4::params::MPC_TKO_SPEED>)    _param_mpc_tko_speed,
+		(ParamFloat<px4::params::MPC_TKO_STD_THR>)  _param_mpc_tko_std_thr,
+		(ParamFloat<px4::params::MPC_TKO_STD_T>)    _param_mpc_tko_std_t,
+		(ParamFloat<px4::params::MPC_TKO_STD_TOL>)  _param_mpc_tko_std_tol,
+		(ParamFloat<px4::params::MPC_TKO_STD_HLD>)  _param_mpc_tko_std_hld,
+		(ParamFloat<px4::params::MPC_TKO_STD_TMO>)  _param_mpc_tko_std_tmo,
 		(ParamFloat<px4::params::MPC_LAND_SPEED>)   _param_mpc_land_speed,
 
 		(ParamFloat<px4::params::MPC_VEL_MANUAL>)   _param_mpc_vel_manual,

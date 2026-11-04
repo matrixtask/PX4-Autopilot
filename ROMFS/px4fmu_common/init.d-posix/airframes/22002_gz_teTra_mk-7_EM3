@@ -232,6 +232,14 @@ param set-default MPC_THR_HOVER 0.42
 param set-default MPC_THR_MIN 0.05
 param set-default MPC_THR_XY_MARG 0.08
 param set-default MPC_TKO_SPEED 1.0
+# Stand on the main gear before lift-off (Veronte PDI V3-2 G -> T): the nose rests ~5 deg low on the gear springs.
+# Level attitude with the thrust ramped to 86 % of hover in 3 s (mains carry the rest, the rate integrator takes the
+# CG moment), level within 0.5 deg for 0.5 s -> the takeoff ramp continues from that thrust with position hold.
+param set-default MPC_TKO_STD_THR 0.86
+param set-default MPC_TKO_STD_T 3.0
+param set-default MPC_TKO_STD_TOL 0.5
+param set-default MPC_TKO_STD_HLD 0.5
+param set-default MPC_TKO_STD_TMO 15.0
 param set-default MPC_TKO_RAMP_T 4.0  # 7 s (v16) did not lower the lift-off load factor and delayed the climb
 param set-default MPC_LAND_SPEED 0.6
 param set-default MPC_Z_VEL_MAX_DN 3.0  # vertical descent 0.23 vh (see VT_B_TRANS_VZLO); was 1.5 (handoff: 4 m/s diverged)
@@ -295,16 +303,16 @@ param set-default FW_THR_MIN 0.05
 
 # Multicopter control parameters
 param set-default MC_AIRMODE 0
-param set-default MC_ROLL_P 0.6
-param set-default MC_PITCH_P 0.45
+param set-default MC_ROLL_P 0.9  # 2026-11-04: angle loop ~1/3 of the rate loop (Veronte V3-3.9 practice: outer 1/3..1/5 of inner)
+param set-default MC_PITCH_P 0.9
 param set-default MC_YAW_P 0.5  # was 0.25 with MC_YAWRATE_P 0.49: rate loop ~0.3 rad/s, as slow as the angle loop -> 15-18 deg overshoot of the takeoff turn (2026-11-03)
 param set-default MC_YAW_WEIGHT 0.3
-param set-default MC_ROLLRATE_P 0.35
-param set-default MC_PITCHRATE_P 0.35
+param set-default MC_ROLLRATE_P 0.70  # rate loop ~2.8 rad/s with MC_ID_B_R 4.06 (was 0.35, 1.4 rad/s)
+param set-default MC_PITCHRATE_P 0.65  # ~2.9 rad/s with MC_ID_B_P 4.50 (was 0.35)
 param set-default MC_YAWRATE_P 2.0  # rate loop ~1.2 rad/s (yaw accel ~0.58 rad/s^2 per unit torque in SITL); takeoff turn overshoot 3.7 deg, torque peak 0.10
-param set-default MC_ROLLRATE_I 0.15  # was 0.03: the integrator (held at 0 on the ground) took >10 s to build a trim
-param set-default MC_PITCHRATE_I 0.15
-param set-default MC_YAWRATE_I 0.1
+param set-default MC_ROLLRATE_I 0.35  # integral time P/I = 2 s, as the Veronte PDI rate PI (roll 0.7/0.35, pitch 0.5/0.25)
+param set-default MC_PITCHRATE_I 0.33
+param set-default MC_YAWRATE_I 0.5  # integral time 4 s, as the Veronte PDI yaw rate PI (1.0/0.25)
 # Control effectiveness and hover trim, identified in SITL 2026-11-04 (manual flight in calm air, MC_ID_EN 1) and
 # confirmed (MC_ID_CONFIRM): identification off. Real aircraft: MC_ID_EN 1, fly in calm air with stick inputs,
 # review MC_ID_PB_x / MC_ID_PT_x after landing, then MC_ID_CONFIRM 1.
@@ -314,7 +322,7 @@ param set-default MC_ID_B_P 4.50
 param set-default MC_TQ_TRIM_R 0.0008
 param set-default MC_TQ_TRIM_P 0.0203  # CG offset: without it the nose sagged 4-6 deg after lift-off and the aircraft drifted 8 m
 param set-default MPC_MAN_Y_MAX 20  # deg/s pilot yaw rate (upstream 150 is a small-quad value)
-param set-default MC_ACC_FF_EN 4  # angular acceleration feed-forward on yaw (bit 2)
+param set-default MC_ACC_FF_EN 7  # angular acceleration feed-forward on roll, pitch and yaw (Tasuku 2026-11-04: all axes)
 param set-default MC_ID_B_Y 0.592
 param set-default MC_ROLLRATE_D 0.035
 param set-default MC_PITCHRATE_D 0.035

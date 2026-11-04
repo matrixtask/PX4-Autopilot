@@ -100,6 +100,11 @@ MulticopterRateControl::parameters_updated()
 
 	_output_lpf_yaw.setCutoffFreq(_param_mc_yaw_tq_cutoff.get());
 	_rate_sp_dot_lpf.setCutoffFreq(2.f);
+
+	if (_param_mpc_thr_hover_id != PARAM_INVALID) {
+		param_get(_param_mpc_thr_hover_id, &_thr_hover);
+	}
+
 	_id_u_fast.setCutoffFreq(3.f);
 	_id_y_fast.setCutoffFreq(3.f);
 	_id_u_slow.setCutoffFreq(0.2f);
@@ -159,6 +164,24 @@ MulticopterRateControl::Run()
 		}
 
 		_vehicle_status_sub.update(&_vehicle_status);
+
+		if (_takeoff_status_sub.updated()) {
+			takeoff_status_s takeoff_status;
+
+			if (_takeoff_status_sub.copy(&takeoff_status)) {
+				const bool was_standing = _standing;
+				_standing = takeoff_status.takeoff_state == takeoff_status_s::TAKEOFF_STATE_STAND;
+				_rampup_after_stand = (was_standing || _rampup_after_stand)
+						      && takeoff_status.takeoff_state == takeoff_status_s::TAKEOFF_STATE_RAMPUP;
+
+				if (was_standing && _rampup_after_stand) {
+					rate_ctrl_status_s integ{};
+					_rate_control.getRateControlStatus(integ);
+					_stand_integral = Vector2f{integ.rollspeed_integ, integ.pitchspeed_integ};
+					_stand_thrust = -_thrust_setpoint(2);
+				}
+			}
+		}
 
 		// use rates setpoint topic
 		vehicle_rates_setpoint_s vehicle_rates_setpoint{};
@@ -225,9 +248,29 @@ MulticopterRateControl::Run()
 				_rate_control.setSaturationStatus(saturation_positive, saturation_negative);
 			}
 
+			// While standing, the main gear reaction behind the CG needs extra nose-up torque, which the integrator
+			// learns too. Bleed that part out as the thrust rises from the stand thrust to the hover thrust (the
+			// reaction goes to zero at lift-off); otherwise the nose pitched up 1.5 deg at lift-off (SITL).
+			if (_rampup_after_stand) {
+				const float hover = _thr_hover;
+				const float span = hover - _stand_thrust;
+				const float k = span > 0.01f ? math::constrain((hover + _thrust_setpoint(2)) / span, 0.f, 1.f) : 0.f;
+
+				for (int i = 0; i < 2; i++) {
+					const float target = _stand_integral(i) * k;
+					rate_ctrl_status_s integ{};
+					_rate_control.getRateControlStatus(integ);
+					const float cur = i == 0 ? integ.rollspeed_integ : integ.pitchspeed_integ;
+
+					if (fabsf(target) < fabsf(cur) && target * cur >= 0.f) {
+						_rate_control.setIntegral(i, target);
+					}
+				}
+			}
+
 			// run rate controller
 			Vector3f torque_setpoint =
-				_rate_control.update(rates, _rates_setpoint, angular_accel, dt, _maybe_landed || _landed);
+				_rate_control.update(rates, _rates_setpoint, angular_accel, dt, (_maybe_landed || _landed) && !_standing);
 
 			// hover trim torque (roll/pitch): the steady moment of the CG offset. Applied from arming, so it is
 			// there at lift-off; the rate integrator is held at zero on the ground and took >10 s to build it

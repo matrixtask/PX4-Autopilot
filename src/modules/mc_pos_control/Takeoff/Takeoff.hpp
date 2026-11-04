@@ -49,6 +49,7 @@ enum class TakeoffState {
 	disarmed = takeoff_status_s::TAKEOFF_STATE_DISARMED,
 	spoolup = takeoff_status_s::TAKEOFF_STATE_SPOOLUP,
 	ready_for_takeoff = takeoff_status_s::TAKEOFF_STATE_READY_FOR_TAKEOFF,
+	stand = takeoff_status_s::TAKEOFF_STATE_STAND,
 	rampup = takeoff_status_s::TAKEOFF_STATE_RAMPUP,
 	flight = takeoff_status_s::TAKEOFF_STATE_FLIGHT
 };
@@ -90,6 +91,16 @@ public:
 
 	TakeoffState getTakeoffState() { return _takeoff_state; }
 
+	/**
+	 * Stand on the main gear before lift-off (Mk-7: the nose rests lower than the mains): enabled when the stand
+	 * thrust is > 0. The caller ends it with standComplete() (level and at the stand thrust: the ramp then starts
+	 * at that thrust) or standFailed() (no lift-off until disarmed).
+	 */
+	void setStandEnabled(bool enabled) { _stand_enabled = enabled; }
+	void standComplete(float thrust_fraction_of_hover, float velocity_p_gain, float takeoff_desired_vz);
+	void standFailed() { _stand_failed = true; }
+	bool standHasFailed() const { return _stand_failed; }
+
 private:
 	TakeoffState _takeoff_state = TakeoffState::disarmed;
 
@@ -98,4 +109,7 @@ private:
 	float _takeoff_ramp_time{0.f};
 	float _takeoff_ramp_vz_init{0.f}; ///< verticval velocity resulting in zero thrust
 	float _takeoff_ramp_progress{0.f}; ///< asecnding from 0 to 1
+	bool _stand_enabled{false};
+	bool _stand_done{false};
+	bool _stand_failed{false};
 };
