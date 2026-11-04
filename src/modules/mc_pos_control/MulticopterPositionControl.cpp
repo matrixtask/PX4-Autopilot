@@ -404,13 +404,16 @@ void MulticopterPositionControl::updateStand(const hrt_abstime &now, trajectory_
 		_stand_level_since = 0;
 		_stand_yaw = euler.psi();
 		_stand_roll = euler.phi();
-		mavlink_log_info(&_mavlink_log_pub, "Takeoff: standing on the main gear (roll %.1f deg held)\t",
-				 (double)math::degrees(_stand_roll));
+		mavlink_log_info(&_mavlink_log_pub, "Takeoff: standing on the main gear (ground roll %.1f deg)\t",
+				 (double)math::degrees(euler.phi()));
 	}
 
-	// a cross-slope (or a roll offset of the estimate) is held, not levelled on the gear: rolling level would have
-	// to lift one main wheel against the gear (SITL: a -1.3 deg estimate offset took 12 s of 15 s to level).
+	// on the gear the roll is set by the ground (cross-slope) and the attitude loop must not fight it: the roll target
+	// follows the measured roll, only the pitch is levelled. Rolling level would have to lift one main wheel against
+	// the gear (SITL: a -1.3 deg roll took 12 s of 15 s; a fixed hold failed while the estimate still moved).
 	// Beyond the slope limit the takeoff is aborted.
+	_stand_roll = euler.phi();
+
 	if (fabsf(_stand_roll) > math::radians(_param_mpc_tko_std_rmx.get())) {
 		_takeoff.standFailed();
 		mavlink_log_critical(&_mavlink_log_pub, "Takeoff aborted: ground roll %.1f deg beyond MPC_TKO_STD_RMX\t",
@@ -433,7 +436,7 @@ void MulticopterPositionControl::updateStand(const hrt_abstime &now, trajectory_
 	setpoint.yaw = _stand_yaw;
 
 	const float tol = math::radians(_param_mpc_tko_std_tol.get());
-	const bool level = fabsf(euler.phi() - _stand_roll) < tol && fabsf(euler.theta()) < tol;
+	const bool level = fabsf(euler.theta()) < tol;
 
 	if (!level || ramp < 1.f) {
 		_stand_level_since = 0;
@@ -447,7 +450,8 @@ void MulticopterPositionControl::updateStand(const hrt_abstime &now, trajectory_
 		_stand_thrust_floor = _stand_thrust * _param_mpc_thr_hover.get();
 		_lift_seed_pending = true;
 		_lift_start = now;
-		mavlink_log_info(&_mavlink_log_pub, "Takeoff: level on the main gear after %.1f s, lift-off\t", (double)t);
+		mavlink_log_info(&_mavlink_log_pub, "Takeoff: level on the main gear after %.1f s (roll %.1f deg), lift-off\t",
+				 (double)t, (double)math::degrees(_stand_roll));
 		_stand_active = false;
 
 	} else if (t > _param_mpc_tko_std_tmo.get()) {
