@@ -404,6 +404,7 @@ void MulticopterPositionControl::updateStand(const hrt_abstime &now, trajectory_
 		_stand_level_since = 0;
 		_stand_yaw = euler.psi();
 		_stand_roll = euler.phi();
+		_stand_prev = now;
 		mavlink_log_info(&_mavlink_log_pub, "Takeoff: standing on the main gear (ground roll %.1f deg)\t",
 				 (double)math::degrees(euler.phi()));
 	}
@@ -411,13 +412,18 @@ void MulticopterPositionControl::updateStand(const hrt_abstime &now, trajectory_
 	// on the gear the roll is set by the ground (cross-slope) and the attitude loop must not fight it: the roll target
 	// follows the measured roll, only the pitch is levelled. Rolling level would have to lift one main wheel against
 	// the gear (SITL: a -1.3 deg roll took 12 s of 15 s; a fixed hold failed while the estimate still moved).
-	// Beyond the slope limit the takeoff is aborted.
-	_stand_roll = euler.phi();
+	// The target follows through a low-pass (MPC_TKO_STD_RTC): a slope or a slowly drifting estimate is accepted, a
+	// fast roll on the gear (gust, a wheel dropping into a hole: the start of a dynamic rollover at 80 % thrust with
+	// little gear load to resist it) still meets the attitude loop. Beyond MPC_TKO_STD_RMX the takeoff is aborted.
+	const float dt_stand = math::constrain((now - _stand_prev) * 1e-6f, 0.f, 0.1f);
+	_stand_prev = now;
+	const float rtc = _param_mpc_tko_std_rtc.get();
+	_stand_roll += (rtc > FLT_EPSILON) ? (euler.phi() - _stand_roll) * dt_stand / (rtc + dt_stand) : euler.phi() - _stand_roll;
 
-	if (fabsf(_stand_roll) > math::radians(_param_mpc_tko_std_rmx.get())) {
+	if (fabsf(euler.phi()) > math::radians(_param_mpc_tko_std_rmx.get())) {
 		_takeoff.standFailed();
-		mavlink_log_critical(&_mavlink_log_pub, "Takeoff aborted: ground roll %.1f deg beyond MPC_TKO_STD_RMX\t",
-				     (double)math::degrees(_stand_roll));
+		mavlink_log_critical(&_mavlink_log_pub, "Takeoff aborted: roll %.1f deg on the gear beyond MPC_TKO_STD_RMX\t",
+				     (double)math::degrees(euler.phi()));
 		_stand_active = false;
 		return;
 	}

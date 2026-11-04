@@ -120,7 +120,8 @@ private:
 	hrt_abstime _stand_start{0};
 	hrt_abstime _stand_level_since{0};
 	float _stand_yaw{NAN};
-	float _stand_roll{0.f};		///< roll held while standing (ground cross-slope / estimate offset)
+	float _stand_roll{0.f};
+	hrt_abstime _stand_prev{0};		///< roll held while standing (ground cross-slope / estimate offset)
 	hrt_abstime _lift_start{0};	///< end of the stand: the roll hold fades out over MPC_TKO_RAMP_T
 	float _stand_thrust{0.f};
 	bool _lift_seed_pending{false};	///< seed the vertical velocity integrator with the stand thrust
@@ -183,6 +184,7 @@ private:
 		(ParamFloat<px4::params::MPC_TKO_STD_HLD>)  _param_mpc_tko_std_hld,
 		(ParamFloat<px4::params::MPC_TKO_STD_TMO>)  _param_mpc_tko_std_tmo,
 		(ParamFloat<px4::params::MPC_TKO_STD_RMX>)  _param_mpc_tko_std_rmx,
+		(ParamFloat<px4::params::MPC_TKO_STD_RTC>)  _param_mpc_tko_std_rtc,
 		(ParamFloat<px4::params::MPC_LAND_SPEED>)   _param_mpc_land_speed,
 
 		(ParamFloat<px4::params::MPC_VEL_MANUAL>)   _param_mpc_vel_manual,

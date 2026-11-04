@@ -82,6 +82,19 @@ parameters:
       min: 0.0
       max: 15.0
       decimal: 1
+    MPC_TKO_STD_RTC:
+      description:
+        short: Time constant of the stand roll target following the measured roll
+        long: |-
+          During the stand the roll target follows the measured roll through this first-order low-pass: a pad
+          cross-slope or a slow estimate drift is accepted, a fast roll on the gear (gust, a wheel in a hole) is
+          resisted by the attitude loop. 0: the target equals the measured roll (no resistance on the gear).
+      type: float
+      default: 2.0
+      unit: s
+      min: 0.0
+      max: 10.0
+      decimal: 1
     MPC_TKO_SPEED:
       description:
         short: Takeoff climb rate
