@@ -232,15 +232,16 @@ param set-default MPC_THR_HOVER 0.42
 param set-default MPC_THR_MIN 0.05
 param set-default MPC_THR_XY_MARG 0.08
 param set-default MPC_TKO_SPEED 1.0
-# Stand on the main gear before lift-off (Veronte PDI V3-2 G -> T): the nose rests ~5 deg low on the gear springs.
-# Level attitude with the thrust ramped to 86 % of hover in 3 s (mains carry the rest, the rate integrator takes the
-# CG moment), level within 0.5 deg for 0.5 s -> the takeoff ramp continues from that thrust with position hold.
-param set-default MPC_TKO_STD_THR 0.86
-param set-default MPC_TKO_STD_T 3.0
+# Common takeoff profile (Tasuku 2026-11-04, PX4 and Veronte alike; Veronte PDI V3-2 G -> T): stand on the main gear
+# before lift-off. The nose rests ~3 deg low on the gear springs (nose 6e4 N/m). Level attitude with the thrust
+# ramped to 80 % of hover in 1.5 s (mains carry the rest; MC_TQ_STD_P feeds the gear moment, the rate integrator
+# trims the rest), level within 0.5 deg for 0.5 s -> 2 s ramp from that thrust to hover with position hold.
+param set-default MPC_TKO_STD_THR 0.80  # common takeoff profile (Tasuku 2026-11-04: stand at 80 % of the weight, as the Veronte PDI ground-thrust threshold 0.509 = 80 %)
+param set-default MPC_TKO_STD_T 1.5  # stand thrust ramp; with MC_TQ_STD_P the aircraft is level within 1-2 s (tko_E: lift-off 5.5 s after arming, was 9.2 s)
 param set-default MPC_TKO_STD_TOL 0.5
 param set-default MPC_TKO_STD_HLD 0.5
 param set-default MPC_TKO_STD_TMO 15.0
-param set-default MPC_TKO_RAMP_T 4.0  # 7 s (v16) did not lower the lift-off load factor and delayed the climb
+param set-default MPC_TKO_RAMP_T 2.0  # from the stand thrust (80 %) to hover; was 4.0 from 0 (7 s in v16 did not lower the lift-off load factor)
 param set-default MPC_LAND_SPEED 0.6
 param set-default MPC_Z_VEL_MAX_DN 3.0  # vertical descent 0.23 vh (see VT_B_TRANS_VZLO); was 1.5 (handoff: 4 m/s diverged)
 param set-default NAV_ACC_RAD 2
@@ -321,6 +322,7 @@ param set-default MC_ID_B_R 4.06
 param set-default MC_ID_B_P 4.50
 param set-default MC_TQ_TRIM_R 0.0008
 param set-default MC_TQ_TRIM_P 0.0203  # CG offset: without it the nose sagged 4-6 deg after lift-off and the aircraft drifted 8 m
+param set-default MC_TQ_STD_P 0.19  # stand nose-up FF x gear load (1-T/hover). SITL: integral alone needed ~4 s to stand level; residual stand integral -0.008 at 0.22, +0.008 at 0.16 -> 0.19
 param set-default MPC_MAN_Y_MAX 20  # deg/s pilot yaw rate (upstream 150 is a small-quad value)
 param set-default MC_ACC_FF_EN 7  # angular acceleration feed-forward on roll, pitch and yaw (Tasuku 2026-11-04: all axes)
 param set-default MC_ID_B_Y 0.592

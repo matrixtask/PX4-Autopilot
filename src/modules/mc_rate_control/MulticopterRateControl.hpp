@@ -212,6 +212,7 @@ private:
 		(ParamFloat<px4::params::MC_ID_PT_P>) _param_mc_id_pt_p,
 		(ParamFloat<px4::params::MC_TQ_TRIM_R>) _param_mc_tq_trim_r,
 		(ParamFloat<px4::params::MC_TQ_TRIM_P>) _param_mc_tq_trim_p,
+		(ParamFloat<px4::params::MC_TQ_STD_P>) _param_mc_tq_std_p,
 
 		(ParamFloat<px4::params::MC_ACRO_R_MAX>) _param_mc_acro_r_max,
 		(ParamFloat<px4::params::MC_ACRO_P_MAX>) _param_mc_acro_p_max,

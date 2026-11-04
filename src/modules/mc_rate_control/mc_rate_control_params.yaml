@@ -430,6 +430,20 @@ parameters:
       min: -0.3
       max: 0.3
       decimal: 4
+    MC_TQ_STD_P:
+      description:
+        short: Takeoff stand pitch torque feedforward
+        long: |-
+          Normalized nose-up torque that holds the aircraft level on its main gear during the takeoff stand,
+          scaled by the gear load: torque = MC_TQ_STD_P * (1 - thrust / hover thrust), applied in the stand and
+          the ramp after it (goes to zero at hover thrust). Without it the rate integrator had to build this
+          moment and standing level took about 4 s (Mk-7 SITL). On landing after a stand the suggested value
+          (stand integral / gear-load fraction + current value) is printed. 0 disables.
+      type: float
+      default: 0.0
+      min: -0.5
+      max: 0.5
+      decimal: 3
     MC_ID_PT_P:
       description:
         short: Provisional hover pitch trim torque (identified, not confirmed)

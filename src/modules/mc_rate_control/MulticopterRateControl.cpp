@@ -179,6 +179,15 @@ MulticopterRateControl::Run()
 					_rate_control.getRateControlStatus(integ);
 					_stand_integral = Vector2f{integ.rollspeed_integ, integ.pitchspeed_integ};
 					_stand_thrust = -_thrust_setpoint(2);
+
+					// suggest the stand feedforward: what the integrator still had to learn, per unit gear load
+					const float load = _thr_hover > 0.01f ? 1.f - _stand_thrust / _thr_hover : 0.f;
+
+					if (load > 0.05f) {
+						PX4_INFO("stand: pitch integral %.4f at thrust %.3f, suggested MC_TQ_STD_P %.3f",
+							 (double)_stand_integral(1), (double)_stand_thrust,
+							 (double)(_param_mc_tq_std_p.get() + _stand_integral(1) / load));
+					}
 				}
 			}
 		}
@@ -278,6 +287,13 @@ MulticopterRateControl::Run()
 			if (_vehicle_control_mode.flag_armed) {
 				torque_setpoint(0) += _param_mc_tq_trim_r.get();
 				torque_setpoint(1) += _param_mc_tq_trim_p.get();
+
+				// takeoff stand: nose-up torque for the main gear reaction behind the CG, proportional to the gear
+				// load (1 - thrust/hover). Zero at hover thrust, so it hands over smoothly through the ramp.
+				if ((_standing || _rampup_after_stand) && _thr_hover > 0.01f) {
+					const float load = math::constrain(1.f + _thrust_setpoint(2) / _thr_hover, 0.f, 1.f);
+					torque_setpoint(1) += _param_mc_tq_std_p.get() * load;
+				}
 			}
 
 			// angular-acceleration feed-forward: d/dt of the rate setpoint (2 Hz low-pass) / MC_ID_B_x, per axis
