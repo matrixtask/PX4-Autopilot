@@ -257,8 +257,8 @@ parameters:
       description:
         short: Confirm the provisional effectiveness
         long: |-
-          Set to 1 on the ground after reviewing MC_ID_PB_x and MC_ID_PT_R/P: copies them to MC_ID_B_x and
-          MC_TQ_TRIM_R/P, clears the provisional values and
+          Set to 1 on the ground after reviewing MC_ID_PB_x, MC_ID_PT_R/P and MC_ID_PS_P: copies them to
+          MC_ID_B_x, MC_TQ_TRIM_R/P and MC_TQ_STD_P, clears the provisional values and
           MC_ID_PX_x, stops the identification (MC_ID_EN 0) and resets itself to 0.
       type: boolean
       default: 0
@@ -438,7 +438,8 @@ parameters:
           scaled by the gear load: torque = MC_TQ_STD_P * (1 - thrust / hover thrust), applied in the stand and
           the ramp after it (goes to zero at hover thrust). Without it the rate integrator had to build this
           moment and standing level took about 4 s (Mk-7 SITL). On landing after a stand the suggested value
-          (stand integral / gear-load fraction + current value) is printed. 0 disables.
+          (stand integral / gear-load fraction + current value) is printed; with MC_ID_EN 1 it is saved as
+          MC_ID_PS_P on landing and MC_ID_CONFIRM copies it here. 0 disables.
       type: float
       default: 0.0
       min: -0.5
@@ -453,6 +454,18 @@ parameters:
       min: -0.3
       max: 0.3
       decimal: 4
+    MC_ID_PS_P:
+      description:
+        short: Provisional takeoff stand pitch feedforward (identified, not confirmed)
+        long: |-
+          MC_TQ_STD_P + (pitch rate integral at the end of the takeoff stand - hover trim residual) / gear load,
+          written on landing when MC_ID_EN = 1 and the flight started with a stand. MC_ID_CONFIRM copies it to
+          MC_TQ_STD_P.
+      type: float
+      default: 0.0
+      min: -0.5
+      max: 0.5
+      decimal: 3
     MC_YAW_TQ_CUTOFF:
       description:
         short: Low pass filter cutoff frequency for yaw torque setpoint

@@ -420,8 +420,9 @@ void MulticopterPositionControl::updateStand(const hrt_abstime &now, trajectory_
 	}
 
 	if (_stand_level_since != 0 && now - _stand_level_since > _param_mpc_tko_std_hld.get() * 1_s) {
-		_takeoff.standComplete(_stand_thrust, _param_mpc_z_vel_p_acc.get(), _param_mpc_tko_speed.get());
+		_takeoff.standComplete();
 		_stand_thrust_floor = _stand_thrust * _param_mpc_thr_hover.get();
+		_lift_seed_pending = true;
 		mavlink_log_info(&_mavlink_log_pub, "Takeoff: level on the main gear after %.1f s, lift-off\t", (double)t);
 		_stand_active = false;
 
@@ -564,8 +565,10 @@ void MulticopterPositionControl::Run()
 				_control.setHoverThrust(_param_mpc_thr_hover.get());
 			}
 
-			// make sure takeoff ramp is not amended by acceleration feed-forward
-			if (_takeoff.getTakeoffState() == TakeoffState::rampup && PX4_ISFINITE(_setpoint.velocity[2])) {
+			// make sure takeoff ramp is not amended by acceleration feed-forward (after the stand the trajectory drives
+			// the thrust continuously, its acceleration included, so the switch to flight adds no step)
+			if (_takeoff.getTakeoffState() == TakeoffState::rampup && !_takeoff.rampAfterStand()
+			    && PX4_ISFINITE(_setpoint.velocity[2])) {
 				_setpoint.acceleration[2] = NAN;
 			}
 
@@ -585,6 +588,18 @@ void MulticopterPositionControl::Run()
 
 			} else {
 				_stand_active = false;
+			}
+
+			// bumpless start of the vertical loop after the stand: the integrator holds the stand thrust, so the
+			// velocity loop starts there and the climb trajectory raises it smoothly (SITL v29: the velocity limit
+			// ramp asked for 72 % of hover, the floor held 80 % for 1.3 s, then the thrust stepped 83 -> 92 % at the
+			// switch to flight)
+			if (_lift_seed_pending && _takeoff.rampAfterStand()) {
+				_control.setIntegralZ(CONSTANTS_ONE_G * (1.f - _stand_thrust));
+				_lift_seed_pending = false;
+
+			} else if (_takeoff.getTakeoffState() != TakeoffState::stand && !_takeoff.rampAfterStand()) {
+				_lift_seed_pending = false;
 			}
 
 			// limit tilt during takeoff ramupup

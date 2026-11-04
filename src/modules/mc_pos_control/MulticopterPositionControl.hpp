@@ -120,6 +120,7 @@ private:
 	hrt_abstime _stand_level_since{0};
 	float _stand_yaw{NAN};
 	float _stand_thrust{0.f};
+	bool _lift_seed_pending{false};	///< seed the vertical velocity integrator with the stand thrust
 	float _stand_thrust_floor{0.f};	///< collective thrust held while standing: floor for the following ramp
 
 	hrt_abstime _time_stamp_last_loop{0};		/**< time stamp of last loop iteration */

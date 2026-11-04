@@ -85,8 +85,13 @@ void FlightTaskAuto::reActivate()
 {
 	FlightTask::reActivate();
 
-	// On ground, reset acceleration and velocity to zero
-	_position_smoothing.reset({0.f, 0.f, 0.f}, {0.f, 0.f, 0.7f}, _position);
+	// On ground, reset acceleration and velocity to zero. Upstream starts the climb trajectory at 0.7 m/s down to go
+	// with the velocity-limit ramp from zero thrust; after a takeoff stand (Mk-7) the thrust is already at the stand
+	// thrust and the climb starts from rest (0.7 m/s down cut the thrust to 48 % of hover in SITL, held at the
+	// stand-thrust floor for 1.6 s).
+	_takeoff_status_sub.update();
+	const bool standing = _takeoff_status_sub.get().takeoff_state == takeoff_status_s::TAKEOFF_STATE_STAND;
+	_position_smoothing.reset({0.f, 0.f, 0.f}, {0.f, 0.f, standing ? 0.f : 0.7f}, _position);
 }
 
 bool FlightTaskAuto::updateInitialize()

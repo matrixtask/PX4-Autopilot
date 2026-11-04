@@ -183,6 +183,8 @@ MulticopterRateControl::Run()
 					// suggest the stand feedforward: what the integrator still had to learn, per unit gear load
 					const float load = _thr_hover > 0.01f ? 1.f - _stand_thrust / _thr_hover : 0.f;
 
+					_stand_valid = load > 0.05f;
+
 					if (load > 0.05f) {
 						PX4_INFO("stand: pitch integral %.4f at thrust %.3f, suggested MC_TQ_STD_P %.3f",
 							 (double)_stand_integral(1), (double)_stand_thrust,
@@ -323,7 +325,8 @@ MulticopterRateControl::Run()
 				rate_ctrl_status_s integ{};
 				_rate_control.getRateControlStatus(integ);
 				updateIdentification(torque_setpoint, angular_accel, dt,
-						     airborne && _vehicle_status.vehicle_type == vehicle_status_s::VEHICLE_TYPE_ROTARY_WING,
+						     airborne && _vehicle_status.vehicle_type == vehicle_status_s::VEHICLE_TYPE_ROTARY_WING
+						     && !_vehicle_status.in_transition_mode,	// pusher thrust and wing lift are not hover
 						     rates, Vector3f{integ.rollspeed_integ, integ.pitchspeed_integ, integ.yawspeed_integ});
 			}
 
@@ -413,6 +416,16 @@ void MulticopterRateControl::confirmIdentification()
 		param_set_no_notification(pt[i], &zero);
 	}
 
+	float ps = 0.f;
+	param_get(param_find("MC_ID_PS_P"), &ps);
+
+	if (fabsf(ps) > FLT_EPSILON) {	// 0 = no provisional stand feedforward
+		param_set_no_notification(param_find("MC_TQ_STD_P"), &ps);
+		PX4_INFO("MC_TQ_STD_P confirmed: %.3f", (double)ps);
+	}
+
+	param_set_no_notification(param_find("MC_ID_PS_P"), &zero);
+
 	const int32_t off = 0;
 	param_set_no_notification(param_find("MC_ID_EN"), &off);
 	param_set(param_find("MC_ID_CONFIRM"), &off);	// the last one notifies: QGC and this module reload
@@ -468,6 +481,20 @@ void MulticopterRateControl::updateIdentification(const Vector3f &torque, const 
 
 			PX4_INFO("MC_ID_PT provisional hover trim torque: roll %.4f pitch %.4f (%.0f s quiet hover)",
 				 (double)_id_trim[0], (double)_id_trim[1], (double)_id_trim_quiet_s);
+		}
+
+		// stand feedforward: what the integrator still held at the end of the stand, per unit gear load, less the
+		// part that is a hover trim error (it is in the hover integral too and goes to MC_TQ_TRIM_P instead)
+		const float load = _thr_hover > 0.01f ? 1.f - _stand_thrust / _thr_hover : 0.f;
+
+		// only on a real landing (the end of a hover segment at a front transition has no stand to compare)
+		if (_stand_valid && (_landed || _maybe_landed) && load > 0.05f) {
+			const float trim_residual = _id_trim_quiet_s >= 10.f ? _id_trim[1] - _param_mc_tq_trim_p.get() : 0.f;
+			const float k = math::constrain(_param_mc_tq_std_p.get() + (_stand_integral(1) - trim_residual) / load, -0.5f, 0.5f);
+			param_set_no_notification(param_find("MC_ID_PS_P"), &k);
+			PX4_INFO("MC_ID_PS_P provisional stand pitch feedforward: %.3f (stand integral %.4f, hover trim residual %.4f)",
+				 (double)k, (double)_stand_integral(1), (double)trim_residual);
+			_stand_valid = false;
 		}
 	}
 

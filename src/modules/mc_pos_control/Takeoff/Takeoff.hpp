@@ -93,11 +93,14 @@ public:
 
 	/**
 	 * Stand on the main gear before lift-off (Mk-7: the nose rests lower than the mains): enabled when the stand
-	 * thrust is > 0. The caller ends it with standComplete() (level and at the stand thrust: the ramp then starts
-	 * at that thrust) or standFailed() (no lift-off until disarmed).
+	 * thrust is > 0. The caller ends it with standComplete() (level and at the stand thrust) or standFailed() (no
+	 * lift-off until disarmed). After the stand the ramp does not limit the upward velocity: the caller seeds the
+	 * vertical velocity integrator with the stand thrust and the climb trajectory raises the thrust from there
+	 * without a step (rampAfterStand()); the ramp only times the switch to flight.
 	 */
 	void setStandEnabled(bool enabled) { _stand_enabled = enabled; }
-	void standComplete(float thrust_fraction_of_hover, float velocity_p_gain, float takeoff_desired_vz);
+	void standComplete() { _takeoff_ramp_progress = 0.f; _stand_done = true; }
+	bool rampAfterStand() const { return _takeoff_state == TakeoffState::rampup && _stand_done; }
 	void standFailed() { _stand_failed = true; }
 	bool standHasFailed() const { return _stand_failed; }
 

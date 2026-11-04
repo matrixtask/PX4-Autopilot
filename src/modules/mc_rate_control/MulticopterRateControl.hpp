@@ -105,7 +105,8 @@ private:
 	bool _standing{false};
 	bool _rampup_after_stand{false};	///< takeoff ramp following the stand phase
 	matrix::Vector2f _stand_integral{};	///< roll/pitch rate integral at the end of the stand phase
-	float _stand_thrust{0.f};		///< collective thrust at the end of the stand phase	///< takeoff stand phase: on the main gear, attitude loop active, integrator learning
+	float _stand_thrust{0.f};		///< collective thrust at the end of the stand phase
+	bool _stand_valid{false};		///< a stand ended in this flight: its integral gives MC_ID_PS_P on landing	///< takeoff stand phase: on the main gear, attitude loop active, integrator learning
 	uORB::Subscription _vehicle_rates_setpoint_sub{ORB_ID(vehicle_rates_setpoint)};
 	uORB::Subscription _vehicle_status_sub{ORB_ID(vehicle_status)};
 
@@ -210,6 +211,7 @@ private:
 		(ParamFloat<px4::params::MC_ID_PX_Y>) _param_mc_id_px_y,
 		(ParamFloat<px4::params::MC_ID_PT_R>) _param_mc_id_pt_r,
 		(ParamFloat<px4::params::MC_ID_PT_P>) _param_mc_id_pt_p,
+		(ParamFloat<px4::params::MC_ID_PS_P>) _param_mc_id_ps_p,
 		(ParamFloat<px4::params::MC_TQ_TRIM_R>) _param_mc_tq_trim_r,
 		(ParamFloat<px4::params::MC_TQ_TRIM_P>) _param_mc_tq_trim_p,
 		(ParamFloat<px4::params::MC_TQ_STD_P>) _param_mc_tq_std_p,

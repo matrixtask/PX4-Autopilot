@@ -48,6 +48,7 @@
 #include <uORB/topics/prec_land_status.h>
 #endif // CONFIG_MODULES_VISION_TARGET_ESTIMATOR
 #include <uORB/topics/vehicle_status.h>
+#include <uORB/topics/takeoff_status.h>
 #include <uORB/topics/landing_surface.h>
 #include <uORB/topics/vehicle_attitude.h>
 #include <lib/geo/geo.h>
@@ -125,6 +126,7 @@ protected:
 	WaypointType _type{WaypointType::idle}; /**< Type of current target triplet. */
 
 	uORB::SubscriptionData<position_setpoint_triplet_s> _position_setpoint_triplet_sub{ORB_ID(position_setpoint_triplet)};
+	uORB::SubscriptionData<takeoff_status_s> _takeoff_status_sub{ORB_ID(takeoff_status)};
 #if defined(CONFIG_MODULES_VISION_TARGET_ESTIMATOR) && CONFIG_MODULES_VISION_TARGET_ESTIMATOR
 	uORB::SubscriptionData<prec_land_status_s>		_prec_land_status_sub {ORB_ID(prec_land_status)};
 #endif // CONFIG_MODULES_VISION_TARGET_ESTIMATOR

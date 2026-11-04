@@ -163,6 +163,7 @@ public:
 	 */
 	void resetIntegral() { _vel_int.setZero(); }
 	void resetIntegralXY() { _vel_int.xy() = matrix::Vector2f(); }
+	void setIntegralZ(float acc_z) { _vel_int(2) = acc_z; } ///< bumpless start of the vertical loop [m/s^2, NED]
 
 	/**
 	 * If set, the tilt setpoint is computed by assuming no vertical acceleration

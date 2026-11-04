@@ -9,6 +9,9 @@ parameters:
           Increasing this value will make climb rate controlled takeoff slower.
           If it's too slow the drone might scratch the ground and tip over.
           A time constant of 0 disables the ramp
+          After a takeoff stand (MPC_TKO_STD_THR > 0) the upward velocity is not limited: the vertical
+          velocity integrator starts at the stand thrust and the climb trajectory (acceleration limited to
+          MPC_TKO_SPEED / MPC_TKO_RAMP_T) raises the thrust from there; this time only sets the switch to flight.
       type: float
       default: 3.0
       unit: s
@@ -21,7 +24,7 @@ parameters:
           For a vehicle that rests tilted (Mk-7: nose gear shorter). Before the takeoff ramp the attitude is held
           level while the thrust ramps to this fraction of the hover thrust in MPC_TKO_STD_T, so the vehicle stands
           on its main gear and the rate integrator takes the CG moment. When level within MPC_TKO_STD_TOL for
-          MPC_TKO_STD_HLD the normal ramp continues from this thrust (position hold, integrator kept). Not level
+          MPC_TKO_STD_HLD the climb starts from this thrust (position hold, integrators kept, see MPC_TKO_RAMP_T). Not level
           after MPC_TKO_STD_TMO: takeoff aborted until disarmed. 0 disables (upstream takeoff).
       type: float
       default: 0.0
