@@ -42,7 +42,7 @@ parameters:
       decimal: 1
     MPC_TKO_STD_TOL:
       description:
-        short: Level tolerance (roll and pitch) to end the stand phase
+        short: Level tolerance to end the stand phase (pitch level, roll at the held ground roll)
       type: float
       default: 0.5
       unit: deg
@@ -66,6 +66,19 @@ parameters:
       unit: s
       min: 3.0
       max: 60.0
+      decimal: 1
+    MPC_TKO_STD_RMX:
+      description:
+        short: Maximum ground roll for the takeoff stand
+        long: |-
+          The roll at the start of the stand (pad cross-slope, or an offset of the attitude estimate) is held during
+          the stand and fades out over MPC_TKO_RAMP_T, instead of being levelled on the gear. Beyond this the
+          takeoff is aborted (Mk-7 landing-site slope limit 5 deg).
+      type: float
+      default: 5.0
+      unit: deg
+      min: 0.0
+      max: 15.0
       decimal: 1
     MPC_TKO_SPEED:
       description:

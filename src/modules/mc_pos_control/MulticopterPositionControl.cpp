@@ -379,6 +379,15 @@ PositionControlStates MulticopterPositionControl::set_vehicle_states(const vehic
 	return states;
 }
 
+Vector2f MulticopterPositionControl::standRollAcceleration() const
+{
+	// horizontal acceleration that tilts the thrust by the held roll: g tan(roll) along the body right axis
+	const float a = CONSTANTS_ONE_G * tanf(_stand_roll);
+	const float east = cosf(_stand_yaw);
+	const float north = -sinf(_stand_yaw);
+	return Vector2f{north, east} * a;
+}
+
 void MulticopterPositionControl::updateStand(const hrt_abstime &now, trajectory_setpoint_s &setpoint)
 {
 	// Mk-7 rests nose-down (nose gear shorter); lifting off from that attitude tilts the thrust forward and the
@@ -394,23 +403,37 @@ void MulticopterPositionControl::updateStand(const hrt_abstime &now, trajectory_
 		_stand_start = now;
 		_stand_level_since = 0;
 		_stand_yaw = euler.psi();
-		mavlink_log_info(&_mavlink_log_pub, "Takeoff: standing on the main gear\t");
+		_stand_roll = euler.phi();
+		mavlink_log_info(&_mavlink_log_pub, "Takeoff: standing on the main gear (roll %.1f deg held)\t",
+				 (double)math::degrees(_stand_roll));
+	}
+
+	// a cross-slope (or a roll offset of the estimate) is held, not levelled on the gear: rolling level would have
+	// to lift one main wheel against the gear (SITL: a -1.3 deg estimate offset took 12 s of 15 s to level).
+	// Beyond the slope limit the takeoff is aborted.
+	if (fabsf(_stand_roll) > math::radians(_param_mpc_tko_std_rmx.get())) {
+		_takeoff.standFailed();
+		mavlink_log_critical(&_mavlink_log_pub, "Takeoff aborted: ground roll %.1f deg beyond MPC_TKO_STD_RMX\t",
+				     (double)math::degrees(_stand_roll));
+		_stand_active = false;
+		return;
 	}
 
 	const float t = (now - _stand_start) * 1e-6f;
 	const float ramp = (_param_mpc_tko_std_t.get() > FLT_EPSILON) ? math::min(t / _param_mpc_tko_std_t.get(), 1.f) : 1.f;
 	_stand_thrust = ramp * _param_mpc_tko_std_thr.get();
 
-	// level attitude, no position / velocity control, thrust = f x hover thrust (acceleration g (1 - f) down)
+	// pitch level, roll held, no position / velocity control, thrust = f x hover thrust (acceleration g (1 - f) down)
 	setpoint = PositionControl::empty_trajectory_setpoint;
 	setpoint.timestamp = now;
-	setpoint.acceleration[0] = 0.f;
-	setpoint.acceleration[1] = 0.f;
+	const Vector2f roll_acc = standRollAcceleration();
+	setpoint.acceleration[0] = roll_acc(0);
+	setpoint.acceleration[1] = roll_acc(1);
 	setpoint.acceleration[2] = CONSTANTS_ONE_G * (1.f - _stand_thrust);
 	setpoint.yaw = _stand_yaw;
 
 	const float tol = math::radians(_param_mpc_tko_std_tol.get());
-	const bool level = fabsf(euler.phi()) < tol && fabsf(euler.theta()) < tol;
+	const bool level = fabsf(euler.phi() - _stand_roll) < tol && fabsf(euler.theta()) < tol;
 
 	if (!level || ramp < 1.f) {
 		_stand_level_since = 0;
@@ -423,6 +446,7 @@ void MulticopterPositionControl::updateStand(const hrt_abstime &now, trajectory_
 		_takeoff.standComplete();
 		_stand_thrust_floor = _stand_thrust * _param_mpc_thr_hover.get();
 		_lift_seed_pending = true;
+		_lift_start = now;
 		mavlink_log_info(&_mavlink_log_pub, "Takeoff: level on the main gear after %.1f s, lift-off\t", (double)t);
 		_stand_active = false;
 
@@ -600,6 +624,18 @@ void MulticopterPositionControl::Run()
 
 			} else if (_takeoff.getTakeoffState() != TakeoffState::stand && !_takeoff.rampAfterStand()) {
 				_lift_seed_pending = false;
+			}
+
+			// the held roll fades out over the ramp as the gear unloads (lift-off ~2 s after the stand in SITL)
+			if (_takeoff.rampAfterStand() && _param_mpc_tko_ramp_t.get() > FLT_EPSILON && fabsf(_stand_roll) > 0.f) {
+				const float fade = 1.f - math::constrain((vehicle_local_position.timestamp_sample - _lift_start) * 1e-6f
+						   / _param_mpc_tko_ramp_t.get(), 0.f, 1.f);
+				const Vector2f roll_acc = standRollAcceleration() * fade;
+
+				for (int i = 0; i < 2; i++) {
+					_setpoint.acceleration[i] = (PX4_ISFINITE(_setpoint.acceleration[i]) ? _setpoint.acceleration[i] : 0.f)
+								    + roll_acc(i);
+				}
 			}
 
 			// limit tilt during takeoff ramupup
