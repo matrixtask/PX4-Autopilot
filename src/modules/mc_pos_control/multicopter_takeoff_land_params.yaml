@@ -73,7 +73,9 @@ parameters:
         long: |-
           On the gear the roll is set by the ground: during the stand the roll target follows the measured roll
           (only the pitch is levelled), and the last value fades out to level over MPC_TKO_RAMP_T. Beyond this
-          roll the takeoff is aborted (Mk-7 landing-site slope limit 5 deg).
+          roll the takeoff is aborted. This is the aircraft roll on its gear, not the ground slope: the gear springs
+          take part of the slope (Mk-7 SITL: 3 deg pad -> 2.5 deg roll, 6 deg pad -> 4.2 deg roll), so 5 deg here
+          is about a 7 deg pad. Set it from a measured pad-slope / roll relation.
       type: float
       default: 5.0
       unit: deg

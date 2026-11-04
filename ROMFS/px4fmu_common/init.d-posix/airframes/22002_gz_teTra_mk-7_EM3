@@ -228,7 +228,7 @@ param set-default SIM_GZ_EC_MAX13   249.6
 # Real rotors are also ~quadratic. MC rate P/D scaled x1.4 (= d thrust/d cmd at hover, 2*0.70) to keep the
 # loop gain that was tuned with the linear model.
 param set-default THR_MDL_FAC 1.0
-param set-default MPC_THR_HOVER 0.42
+param set-default MPC_THR_HOVER 0.443  # SITL hover thrust estimate 0.442-0.447 over 10 runs (2026-11-04); 0.42 (rotor model) made the 80 % stand 76 % of the real weight
 param set-default MPC_THR_MIN 0.05
 param set-default MPC_THR_XY_MARG 0.08
 param set-default MPC_TKO_SPEED 1.0
@@ -322,7 +322,7 @@ param set-default MC_ID_B_R 4.06
 param set-default MC_ID_B_P 4.50
 param set-default MC_TQ_TRIM_R 0.0008
 param set-default MC_TQ_TRIM_P 0.0203  # CG offset: without it the nose sagged 4-6 deg after lift-off and the aircraft drifted 8 m
-param set-default MC_TQ_STD_P 0.19  # stand nose-up FF x gear load (1-T/hover). SITL: integral alone needed ~4 s to stand level; residual stand integral -0.008 at 0.22, +0.008 at 0.16 -> 0.19
+param set-default MC_TQ_STD_P 0.175  # stand nose-up FF x gear load (1-T/hover). SITL suggested 0.173 with MPC_THR_HOVER 0.443 (0.19 with 0.42); physics W x / (b Iyy) = 0.31, difference open
 param set-default MPC_MAN_Y_MAX 20  # deg/s pilot yaw rate (upstream 150 is a small-quad value)
 param set-default MC_ACC_FF_EN 7  # angular acceleration feed-forward on roll, pitch and yaw (Tasuku 2026-11-04: all axes)
 param set-default MC_ID_B_Y 0.592
